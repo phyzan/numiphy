@@ -495,11 +495,11 @@ class SymbolicOde:
 
             compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {src_path}/arrays.cpp {cpp_file} -o {so_file}$(python3-config --extension-suffix)"
 
-            print('Compiling...')
+            print('Compiling ODE...')
             subprocess.run(compile_comm, shell=True)
             print('Done')
 
-            #import so file
+            #import .so file
             spec = importlib.util.spec_from_file_location(modname, so_full_path)
             temp_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(temp_module)
