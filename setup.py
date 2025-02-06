@@ -4,7 +4,7 @@ setup(name = "numiphy",
       version="1.0",
       python_requires=">=3.12, <=3.13",
       packages=find_packages(),
-      package_data={"numiphy": ["odesolvers/odepack"]},
+      package_data={"numiphy": ["odesolvers/odepack/*"]},
       include_package_data=True,
       install_requires=[
           "numpy==2.1.2",
