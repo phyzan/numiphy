@@ -732,7 +732,7 @@ class HamiltonianSystem:
     __args: tuple[sym.Expr, tuple[sym.Variable, ...], tuple[sym.Variable, ...]]
 
     def __init__(self, potential: sym.Expr, *variables: sym.Variable, args: tuple[sym.Variable, ...]=()):
-        self.__args = (potential, variables, args)
+        self.__args = (potential, variables, tuple(args))
         for v in variables:
             if len(v.name) != 1:
                 raise ValueError("All variables in the dynamical system need to have exactly one letter")
