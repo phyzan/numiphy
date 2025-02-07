@@ -4,8 +4,13 @@
 using Tx = double;
 using Tf = arr::StaticArray<double, 4>;
 
+// Tf hhode(const Tx& t, const Tf& q, const Tx* args){
+// 	return {q[2], q[3], -(std::pow(args[2], 2.)*q[0] + args[0]*(std::pow(q[1], 2.) + 3.*args[1]*std::pow(q[0], 2.))), -(std::pow(args[3], 2.)*q[1] + 2.*args[0]*q[0]*q[1])};
+// }
+
 Tf hhode(const Tx& t, const Tf& q, const Tx* args){
-	return {q[2], q[3], -(std::pow(args[2], 2.)*q[0] + args[0]*(std::pow(q[1], 2.) + 3.*args[1]*std::pow(q[0], 2.))), -(std::pow(args[3], 2.)*q[1] + 2.*args[0]*q[0]*q[1])};
+    std::cout << args[0] << " " << args[1] << " " << args[3] << " " << args[4] << " " << args[5] << " ";
+    return {q[2], q[3], -(std::pow(args[4], 2.)*q[0] + args[0]*(std::pow(q[1], 2.) + 3.*args[1]*std::pow(q[0], 2.) + 2.*args[2]*q[0]*q[1])), -(std::pow(args[5], 2.)*q[1] + args[0]*(2.*q[0]*q[1] + args[2]*std::pow(q[0], 2.) + 3.*args[3]*std::pow(q[1], 2.)))};
 }
 
 
