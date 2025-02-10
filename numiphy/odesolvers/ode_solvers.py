@@ -164,13 +164,9 @@ class Updater:
 
 class ODE:
 
-    def solve(self, t, dt, **kwargs)->OdeResult:...
-
-    def set_ics(self, t0: float, f0):...
+    def solve(self, ics: tuple[float, np.ndarray], t, dt, **kwargs)->OdeResult:...
 
     def copy(self)->ODE:...
-
-    def clone(self)->ODE:...
     
 
 class PythonicODE(ODE):
@@ -185,7 +181,7 @@ class PythonicODE(ODE):
     methods = ('euler', 'RK2', 'RK4', 'RK7')
     literal = Literal['euler', 'RK2', 'RK4', 'RK7']
 
-    def __init__(self, df: Callable, ics=None):
+    def __init__(self, df: Callable):
         '''
         Parameters
         -------------
@@ -196,23 +192,11 @@ class PythonicODE(ODE):
         f and f0 must be vectors of the same shape as the shape returned by df(t, f)
         '''
         self.df = df
-        self.ics = ics
-        if ics is not None:
-            if hasattr(ics[1], '__iter__'):
-                self.ics = (ics[0], np.array(ics[1]))
 
     def copy(self):
         return PythonicODE(self.df)
-    
-    def clone(self):
-        return PythonicODE(self.df, self.ics)
 
-    def set_ics(self, x0, f0):
-        if hasattr(f0, '__iter__'):
-            f0 = np.array(f0)
-        self.ics = (x0, f0)
-
-    def custom_solver(self, t, dt, update, lte, args=(), getcond=None, breakcond = None, err = 0., max_frames = -1, display = False, mask = None, thres = 1e-30, checknan=True):
+    def custom_solver(self, ics, t, dt, update, lte, args=(), getcond=None, breakcond = None, err = 0., max_frames = -1, display = False, mask = None, thres = 1e-30, checknan=True):
         '''
         This is the core algorithm that solves a system of ode's using any available method.
         It is an internal function and should not be called by the user yet. It will be easy to
@@ -225,11 +209,11 @@ class PythonicODE(ODE):
             breakcond = lambda *args: False
         cond_sat = False
         _cond_sat = False
-        t0 = self.ics[0]
+        t0 = ics[0]
 
         if dt*t0 > t*dt:
             raise ValueError(f'The ode integration direction from {t0} does not lead to {t}')
-        ti, f = self.ics
+        ti, f = ics
         x_arr, f_arr = [ti], [f]
         pow = 1/lte
         k = 1
@@ -310,7 +294,7 @@ class PythonicODE(ODE):
         dt = bisectright(h, ti, ti+dt) - ti
         return dt, update(self.df, ti, f1, dt, *args)
 
-    def solve(self, t: float, dt: float, method: literal='RK4', **kwargs)->Tuple[np.ndarray, np.ndarray]:
+    def solve(self, ics: tuple[float, np.ndarray], t: float, dt: float, method: literal='RK4', **kwargs)->Tuple[np.ndarray, np.ndarray]:
         '''
         Solve the ode
 
@@ -340,107 +324,103 @@ class PythonicODE(ODE):
         Array of the parameter values in each step
         Array of the function values in each step. This can be an array of arrays, depending on how the user defined the initial conditions.
         '''
-        return getattr(self, method)(t=t, dt=dt, **kwargs)
+        return getattr(self, method)(ics=ics, t=t, dt=dt, **kwargs)
 
-    def euler(self, t, dt, **kwargs):
+    def euler(self, ics, t, dt, **kwargs):
         '''
         Solve the system of ode's using the explicit euler method.
 
         see "solve"
 
         '''
-        return self.custom_solver(t, dt, euler_step, lte=2, **kwargs)
+        return self.custom_solver(ics, t, dt, euler_step, lte=2, **kwargs)
 
-    def RK2(self, t, dt, **kwargs):
+    def RK2(self, ics, t, dt, **kwargs):
         '''
         Solve the system of ode's using the 2nd order Runge-Kutta method
 
         see "solve"
         '''
-        return self.custom_solver(t, dt, RK2_step, lte=3, **kwargs)
+        return self.custom_solver(ics, t, dt, RK2_step, lte=3, **kwargs)
     
-    def RK4(self, t, dt, **kwargs):
+    def RK4(self, ics, t, dt, **kwargs):
         '''
         Solve the system of ode's using the 4th order Runge-Kutta method
 
         see "solve"
         '''
-        return self.custom_solver(t, dt, RK4_step, lte=5, **kwargs)
+        return self.custom_solver(ics, t, dt, RK4_step, lte=5, **kwargs)
 
-    def RK7(self, t, dt, **kwargs):
+    def RK7(self, ics, t, dt, **kwargs):
         '''
         Solve the system of ode's using the 7th order Runge-Kutta method
 
         see "solve"
         '''
-        return self.custom_solver(t, dt, RK7_step, lte=8, **kwargs)
+        return self.custom_solver(ics, t, dt, RK7_step, lte=8, **kwargs)
 
 
-class HamiltonianSystem(PythonicODE):
-    '''
-    System of the form
+# class HamiltonianSystem(PythonicODE): #needs different name, this class already exists
+#     '''
+#     System of the form
 
-    dx/dt = xdot(t, v)
-    dv/dt = vdot(t, x)
+#     dx/dt = xdot(t, v)
+#     dv/dt = vdot(t, x)
 
-    '''
+#     '''
 
-    methods = PythonicODE.methods + ('cromer', 'verlet')
-    literal = Union[PythonicODE.literal, Literal['cromer', 'verlet']]
+#     methods = PythonicODE.methods + ('cromer', 'verlet')
+#     literal = Union[PythonicODE.literal, Literal['cromer', 'verlet']]
 
 
-    def __init__(self, vdot, ics):
-        '''
-        Parameters
-        ------------
+#     def __init__(self, vdot):
+#         '''
+#         Parameters
+#         ------------
 
-        xdot(t, v): Callable
-        vdot(t, x): Callable
-        ics: (t0, x0, v0), tuple. The initial conditions
+#         xdot(t, v): Callable
+#         vdot(t, x): Callable
+#         ics: (t0, x0, v0), tuple. The initial conditions
 
-        The parameters are translated to initialize an ODE object
-        '''
-        self.vdot = vdot
-        self.nd = len(ics[1])//2
+#         The parameters are translated to initialize an ODE object
+#         '''
+#         self.vdot = vdot
 
-        ics = (ics[0], np.array(ics[1:], dtype=float))
-        super().__init__(self._df, ics)
+#         super().__init__(self._df)
 
-    def _df(self, t, f, *args):
-        return np.array([*f[self.nd:], *self.vdot(t, f[:self.nd], *args)])
+#     def _df(self, t, f, *args):
+#         return np.array([*f[self.nd:], *self.vdot(t, f[:self.nd], *args)])
 
-    def cromer(self, t: float, dt: float, **kwargs):
-        '''
-        Solve the system of ode's using the Euler-Cromer method
+#     def cromer(self, t: float, dt: float, **kwargs):
+#         '''
+#         Solve the system of ode's using the Euler-Cromer method
 
-        Parameters
-        -------------
-        t: Advance the system of ode's until their parameter reaches this value
-        dt: Stepsize
+#         Parameters
+#         -------------
+#         t: Advance the system of ode's until their parameter reaches this value
+#         dt: Stepsize
 
-        Returns
-        ---------------
-        Array of the parameter values in each step
-        Array of x, v values in each step. The return shape is (nt, 2, ...), where nt is the number of steps
-        '''
+#         Returns
+#         ---------------
+#         Array of the parameter values in each step
+#         Array of x, v values in each step. The return shape is (nt, 2, ...), where nt is the number of steps
+#         '''
 
-        return self.custom_solver(t, dt, cromer_step, lte=2, **kwargs)
+#         return self.custom_solver(t, dt, cromer_step, lte=2, **kwargs)
 
-    def verlet(self, t: float, dt: float, **kwargs):
-        '''
-        Solve the system of ode's using the velocity-verlet method
+#     def verlet(self, t: float, dt: float, **kwargs):
+#         '''
+#         Solve the system of ode's using the velocity-verlet method
 
-        see "cromer" for parameters and return values
-        '''
+#         see "cromer" for parameters and return values
+#         '''
         
-        return self.custom_solver(t, dt, verlet_step, lte=3, **kwargs)
+#         return self.custom_solver(t, dt, verlet_step, lte=3, **kwargs)
 
 
 class LowLevelODE(ODE):
 
     def copy(self)->LowLevelODE:...
-
-    def clone(self)->LowLevelODE:...
 
 
 class SymbolicOde:
@@ -577,7 +557,6 @@ class Orbit:
         data = np.array([[t0, *f0]], dtype=np.float64)
         assert data.shape == (1, self.dof+1)
         self.__args = (self.ode.copy(), data, False)
-        self.ode.set_ics(t0, list(f0))
 
     def copy(self):
         return Orbit(self.ode.copy(), self.dof)
@@ -587,7 +566,7 @@ class Orbit:
 
     def reset(self):
         if self._data.shape[0] > 0:
-            self._remake(self._data[0, 0], self._data[0, 1:].tolist())
+            self._remake(self._data[0, 0], self._data[0, 1:])
     
     def set_ics(self, t0: float, f0: np.ndarray):
         self._remake(t0, f0)
@@ -599,13 +578,14 @@ class Orbit:
             raise ValueError('Invalid Delta_t or dt inserted')
         elif Delta_t < dt:
             raise ValueError('Delta_t must be greater than dt')
-        res: OdeResult = getattr(self.ode, func)(self._data[-1, 0]+Delta_t, dt, **kwargs)
+        
+        ics = self._parse_ics((self._data[-1, 0], self._data[-1, 1:]))
+        res: OdeResult = getattr(self.ode, func)(ics, self._data[-1, 0]+Delta_t, dt, **kwargs)
         tarr, farr = res.var, res.func
         
         newdata = np.column_stack((tarr, farr))
         data = np.concatenate((self._data, newdata[1:]))
         self.__args = (self.ode, data, self.diverges)
-        self.ode.set_ics(tarr[-1], farr[-1, :].tolist())
         if res.diverges:
             self._set_divergence(True)
         return res
@@ -614,7 +594,10 @@ class Orbit:
 
         if type(other) is not type(self):
             raise ValueError(f'Incompatible orbits: Cannot copy data from orbit object of type {other.__class__} to orbit object of type {self.__class__}')
-        self.__args = (other.ode.clone(), other._data.copy(), other.diverges)
+        self.__args = (other.ode.copy(), other._data.copy(), other.diverges)
+
+    def _parse_ics(self, ics):
+        return (float(ics[0]), list(ics[1]))
 
 
 class VariationalOrbit(Orbit):
@@ -660,7 +643,7 @@ class VariationalOrbit(Orbit):
         Orbit.set_ics(self, t0, f0)
 
     def integrate(self, Delta_t, dt, err=1e-8, max_frames=-1):
-
+        
         res = Orbit.integrate(self, Delta_t, dt, err=err, max_frames=max_frames)
 
         ksi = np.linalg.norm(res.func[:, self.dof//2:], axis=1)
@@ -669,11 +652,6 @@ class VariationalOrbit(Orbit):
 
         self._logksi += list(logksi[1:])
 
-        q0 = self._data[-1, 1:1+self.dof//2]
-        delq0 = self._data[-1, 1+self.dof//2:]/ksi[-1]
-        qnew = np.concatenate((q0, delq0))
-
-        self.ode.set_ics(self._data[-1, 0], list(qnew))
         return res
 
     def copy(self):
@@ -683,6 +661,15 @@ class VariationalOrbit(Orbit):
 
         for _ in range(split):
             self.integrate(Delta_t/split, dt, err=err, max_frames=max_frames)
+    
+    def _parse_ics(self, ics):
+        t0, f0 = ics
+        q0 = f0[:self.dof//2]
+        delq0 = f0[self.dof//2:]
+        ksi = np.linalg.norm(delq0)
+        delq0 = delq0/ksi
+        qnew = np.concatenate((q0, delq0))
+        return (t0, qnew)
 
 
 class HamiltonianOrbit(Orbit):

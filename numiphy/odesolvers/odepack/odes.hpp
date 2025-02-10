@@ -39,8 +39,9 @@ Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* ar
 
 template<class Tx, class Tf>
 struct OdeResult{
-    arr::Array<Tx> x;
-    arr::Array<Tf> f;
+
+    vec::HeapArray<Tx> x;
+    vec::HeapArray<Tf> f;
     long double runtime;
     bool diverges;
 };
@@ -77,92 +78,35 @@ class ODE{
     public:
 
         //constructor
-        ODE() : _ode(nullptr) {};
-        ODE(ode<Tx, Tf> ode);
-        ODE(ode<Tx, Tf> ode, const Tx& x0, const Tf& f0);
+        ODE(ode<Tx, Tf> ode = nullptr);
 
-        //destructor
-        ~ODE();
-
-        void set_ics(const Tx& x0, const Tf& f0);
         //dsolve methods
-
-        const ICS<Tx, Tf>* get_ics() const;
         const ode<Tx, Tf> odefunc() const;
 
-        const OdeResult<Tx, Tf> solve(const Tx& x, const Tx& dx, const double& err, const char* method = "RK4", const int max_frames = -1, const arr::Array<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr, const bool display = false) const;
+        const OdeResult<Tx, Tf> solve(const ICS<Tx, Tf>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr, const bool display = false) const;
+
+        const vec::HeapArray<OdeResult<Tx, Tf>> solve_all(const std::vector<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr) const;
 
     protected:
         ode<Tx, Tf> _ode;
-        ICS<Tx, Tf>* ics = nullptr;
 
         //core algorithm
-        const OdeResult<Tx, Tf> _dsolve(const Tx& x, Tx dx, stepfunc<Tx, Tf> update, const int lte, const double err, const int max_frames, const Tx* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const;
+        const OdeResult<Tx, Tf> _dsolve(const ICS<Tx, Tf>& ics, const Tx& x, Tx dx, stepfunc<Tx, Tf> update, const int lte, const Tx err, const int max_frames, const Tx* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const;
 
 };
 
-// template<class Tx, size_t N>
-// class HamiltonianSystem : public ODE<Tx, arr::StaticArray<Tx, 2*N>>{
-//     using Tf = arr::StaticArray<Tx, 2*N>
-//     public:
-//         HamiltonianSystem() : ODE<Tx, Tf>() {};
 
-//         HamiltonianSystem(vdotfunc<Tx, N> vdot) : ODE<Tx, Tf>(_to_odefunc(vdot)), _vdot(vdot) {};
-        
-//         OdeResult<Tx, Tf> cromer(const Tx& t, const Tx& dt, const int max_frames = -1, const bool display = false, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr) const;
 
-//         OdeResult<Tx, Tf> verlet(const Tx& t, const Tx& dt, const int max_frames = -1, const bool display = false, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr) const;
-
-//     private:
-//         vdotfunc<Tx, N> _vdot;
-// };
+/*
+-----------------------------------------------------------------------
+-----------------------------DEFINITIONS-------------------------------
+-----------------------------------------------------------------------
+*/
 
 
 
 
 
-//DEFINITIONS
-
-// template<class Tx, size_t nd>
-// ode<Tx, arr::StaticArray<Tx, 2*nd>> _to_odefunc(vdotfunc<arr::StaticArray<Tx, nd>> vdot){
-//     return [vdot](const Tx& t, const arr::StaticArray<Tx, 2*nd>& q){
-//         arr::StaticArray<Tx, 2*nd> res;
-//         arr::StaticArray<Tx, nd> x;
-//         arr::StaticArray<Tx, nd> v;
-
-//         for (size_t i=0; i<nd; i++){
-//             x[i] = q[i];
-//         }
-//         arr::StaticArray<Tx, nd> a = vdot(x);
-
-//         for (size_t i=0; i<nd; i++){
-//             res[i] = q[i+nd];
-//             res[i+nd] = a[i];
-//         }
-//         return res;
-//     };
-// }
-
-// template<class Tx>
-// ode<Tx, arr::Array<Tx>> _to_odefunc(vdotfunc<arr::Array<Tx>> vdot){
-//     return [vdot](const Tx& t, const arr::Array<Tx>& q){
-//         size_t nd = q.size()/2;
-//         arr::Array<Tx> res(2*nd, true);
-//         arr::Array<Tx> x(nd, true);
-//         arr::Array<Tx> v(nd, true);
-
-//         for (size_t i=0; i<nd; i++){
-//             x[i] = q[i];
-//         }
-//         arr::Array<Tx> a = vdot(x);
-
-//         for (size_t i=0; i<nd; i++){
-//             res[i] = q[i+nd];
-//             res[i+nd] = a[i];
-//         }
-//         return res;
-//     };
-// }
 
 
 template<class Any, class prec>
@@ -205,7 +149,7 @@ Tf _euler(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* arg
 template<class Tx, class Tf>
 Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
     Tf k1 = ode(x, f, args);
-    Tf k2 = ode(x+dx/2., f+dx*k1/2., args);
+    Tf k2 = ode(x+dx/2, f+dx*k1/2, args);
     return f + dx*k2;
 }
 
@@ -213,25 +157,25 @@ Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args)
 template<class Tx, class Tf>
 Tf _RK4(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
     Tf k1 = ode(x, f, args);
-    Tf k2 = ode(x+dx/2., f+dx*k1/2., args);
-    Tf k3 = ode(x+dx/2., f+dx*k2/2., args);
+    Tf k2 = ode(x+dx/2, f+dx*k1/2, args);
+    Tf k3 = ode(x+dx/2, f+dx*k2/2, args);
     Tf k4 = ode(x+dx, f+dx*k3, args);
-    return f + dx/6.*(k1+2.*k2+2.*k3+k4);
+    return f + dx/6*(k1+2*k2+2*k3+k4);
 }
 
 
 template<class Tx, class Tf>
 Tf _RK7(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args) {
     Tf k1 = dx * ode(x, f, args);
-    Tf k2 = dx * ode(x + dx / 12., f + k1 / 12., args);
-    Tf k3 = dx * ode(x + dx / 12., f + (11. * k2 - 10. * k1) / 12., args);
-    Tf k4 = dx * ode(x + dx / 6., f + k3 / 6., args);
-    Tf k5 = dx * ode(x + dx / 3., f + (157. * k1 - 318. * k2 + 4. * k3 + 160. * k4) / 9., args);
-    Tf k6 = dx * ode(x + dx / 2., f + (-322. * k1 + 199. * k2 + 108. * k3 - 131. * k5) / 30., args);
-    Tf k7 = dx * ode(x + 8. * dx / 12., f + 3158. * k1 / 45. - 638. * k2 / 6. - 23. * k3 / 2. + 157. * k4 / 3. + 157. * k6 / 45., args);
-    Tf k8 = dx * ode(x + 10. * dx / 12., f - 53. * k1 / 14. + 38. * k2 / 7. - 3. * k3 / 14. - 65. * k5 / 72. + 29. * k7 / 90., args);
-    Tf k9 = dx * ode(x + dx, f + 56. * k1 / 25. + 283. * k2 / 14. - 119. * k3 / 6. - 26. * k4 / 7. - 13. * k5 / 15. + 149. * k6 / 32. - 25. * k7 / 9. + 27. * k8 / 25., args);
-    return f + (41. * k1 + 216. * k4 + 27. * k5 + 272. * k6 + 27. * k7 + 216. * k8 + 41. * k9) / 840.;
+    Tf k2 = dx * ode(x + dx / 12, f + k1 / 12, args);
+    Tf k3 = dx * ode(x + dx / 12, f + (11 * k2 - 10 * k1) / 12, args);
+    Tf k4 = dx * ode(x + dx / 6, f + k3 / 6, args);
+    Tf k5 = dx * ode(x + dx / 3, f + (157 * k1 - 318 * k2 + 4 * k3 + 160 * k4) / 9, args);
+    Tf k6 = dx * ode(x + dx / 2, f + (-322 * k1 + 199 * k2 + 108 * k3 - 131 * k5) / 30, args);
+    Tf k7 = dx * ode(x + 8 * dx / 12, f + 3158 * k1 / 45 - 638 * k2 / 6 - 23 * k3 / 2 + 157 * k4 / 3 + 157 * k6 / 45, args);
+    Tf k8 = dx * ode(x + 10 * dx / 12, f - 53 * k1 / 14 + 38 * k2 / 7 - 3 * k3 / 14 - 65 * k5 / 72 + 29 * k7 / 90, args);
+    Tf k9 = dx * ode(x + dx, f + 56 * k1 / 25 + 283 * k2 / 14 - 119 * k3 / 6 - 26 * k4 / 7 - 13 * k5 / 15 + 149 * k6 / 32 - 25 * k7 / 9 + 27 * k8 / 25, args);
+    return f + (41 * k1 + 216 * k4 + 27 * k5 + 272 * k6 + 27 * k7 + 216 * k8 + 41 * k9) / 840;
 }
 
 
@@ -262,13 +206,13 @@ Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* ar
     Tf fnow = ode(x, f, args);
 
     for (int i=0; i<nd; i++){
-        fnew[i] = f[i] + dx*f[i+nd] + 0.5*fnow[i+nd]*dx*dx;
+        fnew[i] = f[i] + dx*f[i+nd] + fnow[i+nd]*dx*dx/2;
     }
 
     Tf fnext = ode(x+dx, fnew, args);
 
     for (int i=nd; i<2*nd; i++){
-        fnew[i] = f[i] + (fnow[i]+fnext[i])*dx/2.;
+        fnew[i] = f[i] + (fnow[i]+fnext[i])*dx/2;
     }
 
     return fnew;
@@ -307,106 +251,102 @@ ODE<Tx, Tf>::lte_map = {
 template<class Tx, class Tf>
 ODE<Tx, Tf>::ODE(ode<Tx, Tf> ode): _ode(ode) {}
 
-
-
-template<class Tx, class Tf>
-ODE<Tx, Tf>::ODE(ode<Tx, Tf> ode, const Tx& x0, const Tf& f0): _ode(ode), ics(new ICS<Tx, Tf>{x0, f0}){}
-
-template<class Tx, class Tf>
-ODE<Tx, Tf>::~ODE(){
-    delete ics;
-    ics = nullptr;
-}
-
-template<class Tx, class Tf>
-void ODE<Tx, Tf>::set_ics(const Tx& x0, const Tf& f0){
-    delete ics;
-    ics = new ICS<Tx, Tf>{x0, f0};
-}
-
-template<class Tx, class Tf>
-const ICS<Tx, Tf>* ODE<Tx, Tf>::get_ics() const {
-    return ics;
-}
-
 template<class Tx, class Tf>
 const ode<Tx, Tf> ODE<Tx, Tf>::odefunc() const {
     return _ode;
 }
 
 template<class Tx, class Tf>
-const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const Tx& x, const Tx& dx, const double& err, const char* method, const int max_frames, const arr::Array<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const{
+const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const ICS<Tx, Tf>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method, const int max_frames, const vec::HeapArray<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const{
     auto it = method_map.find(method);
     if (it != method_map.end()) {
-        return _dsolve(x, dx, it->second, lte_map.find(method)->second, err, max_frames, args->data(), getcond, breakcond, display);
+        return _dsolve(ics, x, dx, it->second, lte_map.find(method)->second, err, max_frames, args->data(), getcond, breakcond, display);
     } else {
         throw std::runtime_error("Unknown ode method");
     }
 }
 
 template<class Tx, class Tf>
-const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const Tx& x, Tx dx, stepfunc<Tx, Tf> update, const int lte, const double err, const int max_frames, const Tx* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const {
-    if (ics == nullptr){
-        throw std::runtime_error("No initial conditions have been set");
+const vec::HeapArray<OdeResult<Tx, Tf>> ODE<Tx, Tf>::solve_all(const std::vector<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method, const int max_frames, const vec::HeapArray<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond) const{
+    const size_t n = ics.size();
+    vec::HeapArray<OdeResult<Tx, Tf>> res(n, true);
+
+    #pragma omp parallel for schedule(dynamic)
+    for (size_t i=0; i<n; i++){
+        res[i] = solve(ics[i], x, dx, err, method, max_frames, args, getcond, breakcond, false);
     }
-    Tx& _x0 = ics->x0;
-    Tf& _f0 = ics->f0;
-    if (dx*_x0 > x*dx){
-        throw std::runtime_error("wrong direction of ode integration");
-    }
+
+    return res;
+}
+
+template<class Tx, class Tf>
+const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const ICS<Tx, Tf>& ics, const Tx& x, Tx dx, stepfunc<Tx, Tf> update, const int lte, const Tx err, const int max_frames, const Tx* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const {
+    const int _dir = vec::sign(dx);
+    const Tx _pow = Tx(1)/lte;
+    const Tx TWO(2);
+    const Tx POINT_NINE = Tx(9)/10;
+    const Tx& _x0 = ics.x0;
+    const Tf& _f0 = ics.f0;
 
     bool ready = false;
     bool capture = false;
+    bool diverges = false;
+    int k = 1;
 
     Tx xi = _x0;
     Tf fi = _f0;
 
-    arr::Array<Tx> x_arr;
-    arr::Array<Tf> f_arr;
-    x_arr.append(xi);
-    f_arr.append(fi);
-
-    double _pow = 1./lte;
-    int k = 1;
-    int _dir = arr::sign(dx);
     Tx rel_err;
     Tf f_single;
     Tf f_half;
     Tf f_double;
     Tf f_tmp;
-    bool diverges = false;
 
+    vec::HeapArray<Tx> x_arr;
+    vec::HeapArray<Tf> f_arr;
+
+    if (dx*_x0 > x*dx){
+        throw std::runtime_error("wrong direction of ode integration");
+    }
+
+    if (max_frames > 0){
+        x_arr.allocate(max_frames);
+        f_arr.allocate(max_frames);
+        x_arr.fill();
+        f_arr.fill();
+    }
+
+    x_arr.append(xi);
+    f_arr.append(fi);
     auto t1 = std::chrono::high_resolution_clock::now();
-    
     while (!ready){
         
         //determine step size
-        rel_err = 2.*err;
-        
+        rel_err = TWO*err;
         while (rel_err > err){
             f_single = update(_ode, xi, fi, dx, args);
-            f_half = update(_ode, xi, fi, dx/2., args);
-            f_double = update(_ode, xi+dx/2., f_half, dx/2., args);
+            f_half = update(_ode, xi, fi, dx/2, args);
+            f_double = update(_ode, xi+dx/2, f_half, dx/2, args);
 
             try{
-                rel_err = arr::safemax(arr::abs((f_single - f_double)/f_double));
+                rel_err = vec::safemax(vec::abs((f_single - f_double)/f_double));
             }
             catch (std::overflow_error& e){
                 break;
             }
+
             if (rel_err != 0.){
-                dx = 0.9*dx*pow(err/rel_err, _pow);
+                dx = POINT_NINE*dx*pow(err/rel_err, _pow); //TODO for e.g. mpfr, the mpfr::pow must be invoked
             }
             else{
                 break;
             }
         }
-        
-
         if ((xi+dx)*_dir > x*_dir){
             dx = x-xi;
             ready=true;
-        }
+        }//step size determined
+        
         f_tmp = update(_ode, xi, fi, dx, args);
         if (has_nan_inf(f_tmp)){
             diverges = true;
@@ -450,7 +390,6 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const Tx& x, Tx dx, stepfunc<Tx, Tf
 
 
     }
-
     auto t2 = std::chrono::high_resolution_clock::now();
 
     std::chrono::duration<double> time = t2-t1;
@@ -459,31 +398,6 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const Tx& x, Tx dx, stepfunc<Tx, Tf
     return res;
 }
 
-template<class Tx, class Tf>
-arr::Array<OdeResult<Tx, Tf>> IntegrateAll(const ODE<Tx, Tf>& ode, const arr::Array<ICS<Tx, Tf>>& ics, const bool& parallel, const Tx& x, const Tx& dx, const double& err, const char* method = "RK4", const int max_frames = -1, const arr::Array<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr){
-
-    size_t n = ics.size();
-    arr::Array<ODE<Tx, Tf>> ode_arr(n, true);
-    arr::Array<OdeResult<Tx, Tf>> res(n, true);
-
-    if (parallel){
-        #pragma omp parallel for schedule(dynamic)
-        for (size_t i=0; i<n; i++){
-            ode_arr[i] = ode;
-            ode_arr[i].set_ics(ics[i]->x0, ics[i]->f0);
-            res[i] = ode_arr[i].solve(x, dx, err, method, max_frames, args, getcond, breakcond, false);
-        }
-    }
-    else{
-        for (size_t i=0; i<n; i++){
-            ode_arr[i] = ode;
-            ode_arr[i].set_ics(ics[i]->x0, ics[i]->f0);
-            res[i] = ode_arr[i].solve(x, dx, err, method, max_frames, args, getcond, breakcond, false);
-        }
-    }
-
-    return res;
-}
 
 
 #endif

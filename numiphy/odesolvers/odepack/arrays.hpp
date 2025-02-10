@@ -5,28 +5,28 @@
 #include <cmath>
 #include <omp.h>
 
-namespace arr{
+namespace vec{
 
 using std::sin, std::cos, std::tan, std::abs;
 
-template<class T>
-class Array{
+template<class T, size_t N = 0>
+class HeapArray{
 
     public:
 
         //constructor
-        Array(const size_t& size=0, const bool& fill=false);
+        HeapArray(const size_t& size=0, const bool& fill=false);
 
-        Array(const std::initializer_list<T> arr);
+        HeapArray(const std::initializer_list<T> arr);
 
         //destructor
-        inline ~Array(){delete[] _arr;}
+        inline ~HeapArray(){delete[] _arr;}
 
         //copy constructor
-        inline Array(const Array<T>& other){ _clone_from(other);}
+        inline HeapArray(const HeapArray<T, N>& other){ _clone_from(other);}
 
         //assignment operator
-        Array<T>& operator=(const Array<T>& other);
+        HeapArray<T, N>& operator=(const HeapArray<T, N>& other);
 
         //index operator
         T& operator[](int index);
@@ -34,17 +34,17 @@ class Array{
         const T& operator[](int index) const;
 
         //identity operator
-        inline Array<T>& operator+() const {return *this;}
+        inline HeapArray<T, N>& operator+() const {return *this;}
 
-        Array<T> operator-() const;
+        HeapArray<T, N> operator-() const;
 
-        Array<T>& operator+=(const Array<T>& other);
+        HeapArray<T, N>& operator+=(const HeapArray<T, N>& other);
 
-        Array<T>& operator+=(const T& other);
+        HeapArray<T, N>& operator+=(const T& other);
 
-        Array<T>& operator-=(const Array<T>& other);
+        HeapArray<T, N>& operator-=(const HeapArray<T, N>& other);
 
-        Array<T>& operator-=(const T& other);
+        HeapArray<T, N>& operator-=(const T& other);
 
         inline size_t size() const{ return _size;}
 
@@ -58,7 +58,7 @@ class Array{
 
         inline auto min() const{ return min(*this);}
 
-        inline Array<T> abs() const{ return abs(*this);}
+        inline HeapArray<T, N> abs() const{ return abs(*this);}
 
         void allocate(size_t newSize);
 
@@ -68,13 +68,13 @@ class Array{
 
         void fill();
 
-        Array<T> empty_copy() const;
+        HeapArray<T, N> empty_copy() const;
 
         inline void fit(){ if (!full()) allocate(_size);}
 
         void append(const T& element);
 
-        void append(const Array<T>& array);
+        void append(const HeapArray<T, N>& HeapArray);
 
         void pop();
 
@@ -82,59 +82,59 @@ class Array{
 
         const T* data() const;
 
-        template<class R>
-        friend Array<R> _operation(const Array<R>&, const R&, R (*oper)(const R&, const R&));
+        template<class R, size_t n>
+        friend HeapArray<R, n> _operation(const HeapArray<R, n>&, const R&, R (*oper)(const R&, const R&));
 
-        template<class R>
-        friend Array<R> _operation(const R&, const Array<R>&, R (*oper)(const R&, const R&));
+        template<class R, size_t n>
+        friend HeapArray<R, n> _operation(const R&, const HeapArray<R, n>&, R (*oper)(const R&, const R&));
 
-        template<class R>
-        friend Array<R> _operation(const Array<R>&, const Array<R>&, R (*oper)(const R&, const R&));
+        template<class R, size_t n>
+        friend HeapArray<R, n> _operation(const HeapArray<R, n>&, const HeapArray<R, n>&, R (*oper)(const R&, const R&));
 
-        template<class R>
-        friend Array<R> _mathfunc(const Array<R>& x, R (*f)(const R&));
+        template<class R, size_t n>
+        friend HeapArray<R, n> _mathfunc(const HeapArray<R, n>& x, R (*f)(const R&));
 
     private:
-        size_t _alloc;//size of allocated array
-        size_t _size;//actual size of content inside array. _size <= _alloc
-        T* _arr = nullptr;//allocated array
+        size_t _alloc;//size of allocated HeapArray
+        size_t _size;//actual size of content inside HeapArray. _size <= _alloc
+        T* _arr = nullptr;//allocated HeapArray
 
-        void _clone_from(const Array<T>& other);
+        void _clone_from(const HeapArray<T, N>& other);
 
-        void _check_compatibility(const Array<T>& other) const;
+        void _check_compatibility(const HeapArray<T, N>& other) const;
 };
 
 
 
 template<class T, size_t N>
-class StaticArray{
+class StackArray{
 
     public:
 
         //default constructor
-        StaticArray(){};
+        StackArray(){};
 
         //constructor
-        StaticArray(const std::initializer_list<T> arr);
+        StackArray(const std::initializer_list<T> arr);
 
         //index operator
         T& operator[](int index);
 
         const T& operator[](int index) const;
 
-        inline StaticArray<T, N>& operator+(){return *this;}
+        inline StackArray<T, N>& operator+(){return *this;}
 
-        StaticArray<T, N> operator=(const StaticArray<T, N>& other);
+        StackArray<T, N> operator=(const StackArray<T, N>& other);
 
-        StaticArray<T, N> operator-() const;
+        StackArray<T, N> operator-() const;
 
-        StaticArray<T, N>& operator+=(const StaticArray<T, N>& other);
+        StackArray<T, N>& operator+=(const StackArray<T, N>& other);
 
-        StaticArray<T, N>& operator+=(const T& other);
+        StackArray<T, N>& operator+=(const T& other);
 
-        StaticArray<T, N>& operator-=(const StaticArray<T, N>& other);
+        StackArray<T, N>& operator-=(const StackArray<T, N>& other);
 
-        StaticArray<T, N>& operator-=(const T& other);
+        StackArray<T, N>& operator-=(const T& other);
 
         inline size_t size() const{ return _size;}
         
@@ -142,7 +142,7 @@ class StaticArray{
 
         inline auto min() const{ return min(*this);}
 
-        inline StaticArray<T, N> abs() const{ return abs(*this);}
+        inline StackArray<T, N> abs() const{ return abs(*this);}
 
         inline void fit(){}
 
@@ -152,23 +152,23 @@ class StaticArray{
 
         void fill() {}
 
-        StaticArray<T, N> empty_copy() const;
+        StackArray<T, N> empty_copy() const;
 
         void show() const;
 
         const T* data() const;
 
         template<class R, size_t n>
-        friend StaticArray<R, n> _operation(const StaticArray<R, n>&, const R&, R (*oper)(const R&, const R&));
+        friend StackArray<R, n> _operation(const StackArray<R, n>&, const R&, R (*oper)(const R&, const R&));
 
         template<class R, size_t n>
-        friend StaticArray<R, n> _operation(const R&, const StaticArray<R, n>&, R (*oper)(const R&, const R&));
+        friend StackArray<R, n> _operation(const R&, const StackArray<R, n>&, R (*oper)(const R&, const R&));
 
         template<class R, size_t n>
-        friend StaticArray<R, n> _operation(const StaticArray<R, n>&, const StaticArray<R, n>&, R (*oper)(const R&, const R&));
+        friend StackArray<R, n> _operation(const StackArray<R, n>&, const StackArray<R, n>&, R (*oper)(const R&, const R&));
 
         template<class R, size_t n>
-        friend StaticArray<R, n> _mathfunc(const StaticArray<R, n>& x, R (*f)(const R&));
+        friend StackArray<R, n> _mathfunc(const StackArray<R, n>& x, R (*f)(const R&));
 
     private:
 
@@ -198,48 +198,172 @@ template<class T>
 inline T _pow(const T& a, const T& b) {return std::pow(a, b);}
 
 
-template<class R>
-Array<R> _operation(const Array<R>& A, const R& b, R (*oper)(const R&, const R&));
+template<class R, size_t n>
+HeapArray<R, n> _operation(const HeapArray<R, n>& A, const R& b, R (*oper)(const R&, const R&));
 
 
-template<class R>
-Array<R> _operation(const R& b, const Array<R>& A, R (*oper)(const R&, const R&));
+template<class R, size_t n>
+HeapArray<R, n> _operation(const R& b, const HeapArray<R, n>& A, R (*oper)(const R&, const R&));
 
 
-template<class R>
-Array<R> _operation(const Array<R>& A, const Array<R>& B, R (*oper)(const R&, const R&));
+template<class R, size_t n>
+HeapArray<R, n> _operation(const HeapArray<R, n>& A, const HeapArray<R, n>& B, R (*oper)(const R&, const R&));
 
 
 
 template<class R, size_t n>
-StaticArray<R, n> _operation(const StaticArray<R, n>&, const R&, R (*oper)(const R&, const R&));
+StackArray<R, n> _operation(const StackArray<R, n>&, const R&, R (*oper)(const R&, const R&));
 
 template<class R, size_t n>
-StaticArray<R, n> _operation(const R&, const StaticArray<R, n>&, R (*oper)(const R&, const R&));
+StackArray<R, n> _operation(const R&, const StackArray<R, n>&, R (*oper)(const R&, const R&));
 
 template<class R, size_t n>
-StaticArray<R, n> _operation(const StaticArray<R, n>&, const StaticArray<R, n>&, R (*oper)(const R&, const R&));
+StackArray<R, n> _operation(const StackArray<R, n>&, const StackArray<R, n>&, R (*oper)(const R&, const R&));
 
 
-inline auto add(const auto& a, const auto& b){return _operation(a, b, _add);}
 
-inline auto sub(const auto& a, const auto& b){return _operation(a, b, _sub);}
+//--------------ADDITION------------------------
 
-inline auto mul(const auto& a, const auto& b){return _operation(a, b, _mul);}
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> add(const D<T, N>& a, const T& b){return _operation(a, b, _add);}
 
-inline auto div(const auto& a, const auto& b){return _operation(a, b, _div);}
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> add(const T& a, const D<T, N>& b){return _operation(a, b, _add);}
 
-inline auto pow(const auto& a, const auto& b){return _operation(a, b, _pow);}
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> add(const D<T, N>& a, const D<T, N>& b){return _operation(a, b, _add);}
+
+//int case
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> add(const D<T, N>& a, const int& b){return _operation(a, T(b), _add);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> add(const int& a, const D<T, N>& b){return _operation(T(a), b, _add);}
+
+//--------------SUBTRACTION------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> sub(const D<T, N>& a, const T& b){return _operation(a, b, _sub);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> sub(const T& a, const D<T, N>& b){return _operation(a, b, _sub);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> sub(const D<T, N>& a, const D<T, N>& b){return _operation(a, b, _sub);}
+
+//int case
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> sub(const D<T, N>& a, const int& b){return _operation(a, T(b), _sub);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> sub(const int& a, const D<T, N>& b){return _operation(T(a), b, _sub);}
+
+//--------------MULTIPLICATION------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> mul(const D<T, N>& a, const T& b){return _operation(a, b, _mul);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> mul(const T& a, const D<T, N>& b){return _operation(a, b, _mul);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> mul(const D<T, N>& a, const D<T, N>& b){return _operation(a, b, _mul);}
+
+//int case
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> mul(const D<T, N>& a, const int& b){return _operation(a, T(b), _mul);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> mul(const int& a, const D<T, N>& b){return _operation(T(a), b, _mul);}
+
+//--------------DIVISION------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> div(const D<T, N>& a, const T& b){return _operation(a, b, _div);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> div(const T& a, const D<T, N>& b){return _operation(a, b, _div);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> div(const D<T, N>& a, const D<T, N>& b){return _operation(a, b, _div);}
+
+//int case
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> div(const D<T, N>& a, const int& b){return _operation(a, T(b), _div);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> div(const int& a, const D<T, N>& b){return _operation(T(a), b, _div);}
+
+//--------------POWER------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> pow(const D<T, N>& a, const T& b){return _operation(a, b, _pow);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> pow(const T& a, const D<T, N>& b){return _operation(a, b, _pow);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> pow(const D<T, N>& a, const D<T, N>& b){return _operation(a, b, _pow);}
+
+//int case
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> pow(const D<T, N>& a, const int& b){return _operation(a, T(b), _pow);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> pow(const int& a, const D<T, N>& b){return _operation(T(a), b, _pow);}
 
 
-inline auto operator+(const auto& arr1, const auto& arr2){ return add(arr1, arr2); }
+/*
+--------------------------------------------------------------------------------
+-------------------------OPERATOR OVERLOADING-----------------------------------
+--------------------------------------------------------------------------------
+*/
 
-inline auto operator-(const auto& arr1, const auto& arr2){ return sub(arr1, arr2);}
+//--------------ADDITION------------------------
 
-inline auto operator*(const auto& arr1, const auto& arr2){ return mul(arr1, arr2); }
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator+(const D<T, N>& a, const auto& b){return add(a, b);}
 
-inline auto operator/(const auto& arr1, const auto& arr2){ return div(arr1, arr2);}
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator+(const auto& a, const D<T, N>& b){return add(a, b);}
 
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator+(const D<T, N>& a, const D<T, N>& b){return add(a, b);}
+
+
+//--------------SUBTRACTION------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator-(const D<T, N>& a, const auto& b){return sub(a, b);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator-(const auto& a, const D<T, N>& b){return sub(a, b);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator-(const D<T, N>& a, const D<T, N>& b){return sub(a, b);}
+
+//--------------MULTIPLICATION------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator*(const D<T, N>& a, const auto& b){return mul(a, b);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator*(const auto& a, const D<T, N>& b){return mul(a, b);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator*(const D<T, N>& a, const D<T, N>& b){return mul(a, b);}
+
+
+//--------------DIVISION------------------------
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator/(const D<T, N>& a, const auto& b){return div(a, b);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator/(const auto& a, const D<T, N>& b){return div(a, b);}
+
+template<class T, size_t N, template<class, size_t> class D>
+D<T, N> operator/(const D<T, N>& a, const D<T, N>& b){return div(a, b);}
 
 
 
@@ -261,56 +385,56 @@ auto _safemin_impl(const ArrayType&);
 template<class T>
 inline T max(const T& x){return x;}
 
-template<class T>
-auto max(const Array<T>& A){ return _max_impl(A); }
+template<class T, size_t N>
+auto max(const HeapArray<T, N>& A){ return _max_impl(A); }
 
 template<class T, size_t n>
-auto max(const StaticArray<T, n>& A){return _max_impl(A);}
+auto max(const StackArray<T, n>& A){return _max_impl(A);}
 
 template<class T>
 inline T safemax(const T& x){return x;}
 
-template<class T>
-auto safemax(const Array<T>& A){return _safemax_impl(A);}
+template<class T, size_t N>
+auto safemax(const HeapArray<T, N>& A){return _safemax_impl(A);}
 
 template<class T, size_t n>
-auto safemax(const StaticArray<T, n>& A){return _safemax_impl(A);}
+auto safemax(const StackArray<T, n>& A){return _safemax_impl(A);}
 
 
 template<class T>
 inline T min(const T& x){return x;}
 
-template<class T>
-auto min(const Array<T>& A){ return _min_impl(A); }
+template<class T, size_t N>
+auto min(const HeapArray<T, N>& A){ return _min_impl(A); }
 
 template<class T, size_t n>
-auto min(const StaticArray<T, n>& A){return _min_impl(A);}
+auto min(const StackArray<T, n>& A){return _min_impl(A);}
 
 template<class T>
 inline T safemin(const T& x){return x;}
 
-template<class T>
-auto safemin(const Array<T>& A){return _safemin_impl(A);}
+template<class T, size_t N>
+auto safemin(const HeapArray<T, N>& A){return _safemin_impl(A);}
 
 template<class T, size_t n>
-auto safemin(const StaticArray<T, n>& A){return _safemin_impl(A);}
+auto safemin(const StackArray<T, n>& A){return _safemin_impl(A);}
 
 template<class T>
 bool has_nan_inf(const T&);
 
-template<class T>
-bool has_nan_inf(const Array<T>&);
+template<class T, size_t N>
+bool has_nan_inf(const HeapArray<T, N>&);
 
 template<class T, size_t n>
-bool has_nan_inf(const StaticArray<T, n>&);
+bool has_nan_inf(const StackArray<T, n>&);
 
 bool _isValid(auto value);
 
-template<class T>
-const auto& nested_element(const Array<T>& A);
+template<class T, size_t N>
+const auto& nested_element(const HeapArray<T, N>& A);
 
 template<class T, size_t N>
-const auto& nested_element(const StaticArray<T, N>& A);
+const auto& nested_element(const StackArray<T, N>& A);
 
 template<class T>
 const auto& nested_element(const T& A);
@@ -319,11 +443,11 @@ const auto& nested_element(const T& A);
 
 
 //DECLARE GENERAL MATH FUNCTIONS
-template<class R>
-inline Array<R> _mathfunc(const Array<R>& x, R (*f)(const R&));
+template<class R, size_t n>
+inline HeapArray<R, n> _mathfunc(const HeapArray<R, n>& x, R (*f)(const R&));
 
 template<class R, size_t n>
-StaticArray<R, n> _mathfunc(const StaticArray<R, n>& x, R (*f)(const R&));
+StackArray<R, n> _mathfunc(const StackArray<R, n>& x, R (*f)(const R&));
 
 template<class T>
 inline T abs(const T& x);
@@ -338,38 +462,38 @@ template<class T>
 inline T tan(const T& x);
 
 
-template<class T>
-inline Array<T> abs(const Array<T>& x);
+template<class T, size_t N>
+inline HeapArray<T, N> abs(const HeapArray<T, N>& x);
 
-template<class T>
-inline Array<T> sin(const Array<T>& x);
+template<class T, size_t N>
+inline HeapArray<T, N> sin(const HeapArray<T, N>& x);
 
-template<class T>
-inline Array<T> cos(const Array<T>& x);
+template<class T, size_t N>
+inline HeapArray<T, N> cos(const HeapArray<T, N>& x);
 
-template<class T>
-inline Array<T> tan(const Array<T>& x);
+template<class T, size_t N>
+inline HeapArray<T, N> tan(const HeapArray<T, N>& x);
 
 
 template<class T, size_t n>
-inline StaticArray<T, n> abs(const StaticArray<T, n>& x);
+inline StackArray<T, n> abs(const StackArray<T, n>& x);
 
 template<class T, size_t n>
-inline StaticArray<T, n> sin(const StaticArray<T, n>& x);
+inline StackArray<T, n> sin(const StackArray<T, n>& x);
 
 template<class T, size_t n>
-inline StaticArray<T, n> cos(const StaticArray<T, n>& x);
+inline StackArray<T, n> cos(const StackArray<T, n>& x);
 
 template<class T, size_t n>
-inline StaticArray<T, n> tan(const StaticArray<T, n>& x);
+inline StackArray<T, n> tan(const StackArray<T, n>& x);
 
 
 
 
-//ARRAY DEFINITION
+//HeapArray DEFINITION
 
-template<class T>
-Array<T>::Array(const std::initializer_list<T> arr){
+template<class T, size_t N>
+HeapArray<T, N>::HeapArray(const std::initializer_list<T> arr){
     delete[] _arr;
     _arr = new T[arr.size()];
     std::copy(arr.begin(), arr.end(), _arr);
@@ -377,41 +501,41 @@ Array<T>::Array(const std::initializer_list<T> arr){
     _alloc = _size;
 }
 
-template<class T>
-Array<T>::Array(const size_t& size, const bool& fill): _alloc(size), _size(fill*size){
+template<class T, size_t N>
+HeapArray<T, N>::HeapArray(const size_t& size, const bool& fill): _alloc(size), _size(fill*size){
     if (_alloc == 0){ _arr = nullptr;}
     else{delete[] _arr; _arr = new T[_alloc];}
 }
 
-template<class T>
-Array<T>& Array<T>::operator=(const Array<T>& other){
+template<class T, size_t N>
+HeapArray<T, N>& HeapArray<T, N>::operator=(const HeapArray<T, N>& other){
     if (&other != this) _clone_from(other);
     return *this;
 }
 
-template<class T>
-T& Array<T>::operator[](int index){
+template<class T, size_t N>
+T& HeapArray<T, N>::operator[](int index){
     _check_index(index, _size);
     return _arr[(index >= 0) ? index : _size+index];
 }
 
-template<class T>
-const T& Array<T>::operator[](int index) const{
+template<class T, size_t N>
+const T& HeapArray<T, N>::operator[](int index) const{
     _check_index(index, _size);
     return _arr[(index >= 0) ? index : _size+index];
 }
 
-template<class T>
-Array<T> Array<T>::operator-() const {
-    Array<T> res(_alloc); res._size = _size;
+template<class T, size_t N>
+HeapArray<T, N> HeapArray<T, N>::operator-() const {
+    HeapArray<T, N> res(_alloc); res._size = _size;
     for (size_t i=0; i<_size; i++){
         res._arr[i] = -_arr[i];
     }
     return res;
 }
 
-template<class T>
-Array<T>& Array<T>::operator+=(const Array<T>& other){
+template<class T, size_t N>
+HeapArray<T, N>& HeapArray<T, N>::operator+=(const HeapArray<T, N>& other){
     _check_compatibility(other);
     for (size_t i=0; i<_size; i++){
         _arr[i] += other._arr[i];
@@ -419,8 +543,8 @@ Array<T>& Array<T>::operator+=(const Array<T>& other){
     return *this;
 }
 
-template<class T>
-Array<T>& Array<T>::operator+=(const T& other){
+template<class T, size_t N>
+HeapArray<T, N>& HeapArray<T, N>::operator+=(const T& other){
     for (size_t i=0; i<_size; i++){
         _arr[i] += other;
     }
@@ -428,8 +552,8 @@ Array<T>& Array<T>::operator+=(const T& other){
 }
 
 
-template<class T>
-Array<T>& Array<T>::operator-=(const Array<T>& other){
+template<class T, size_t N>
+HeapArray<T, N>& HeapArray<T, N>::operator-=(const HeapArray<T, N>& other){
     _check_compatibility(other);
     for (size_t i=0; i<_size; i++){
         _arr[i] -= other._arr[i];
@@ -437,16 +561,16 @@ Array<T>& Array<T>::operator-=(const Array<T>& other){
     return *this;
 }
 
-template<class T>
-Array<T>& Array<T>::operator-=(const T& other){
+template<class T, size_t N>
+HeapArray<T, N>& HeapArray<T, N>::operator-=(const T& other){
     for (size_t i=0; i<_size; i++){
         _arr[i] -= other;
     }
     return *this;
 }
 
-template<class T>
-void Array<T>::allocate(size_t newSize){
+template<class T, size_t N>
+void HeapArray<T, N>::allocate(size_t newSize){
     if (newSize < _size || newSize == 0) return;
     T* newArr = new T[newSize];
     
@@ -460,56 +584,56 @@ void Array<T>::allocate(size_t newSize){
     
 }
 
-template<class T>
-void Array<T>::try_alloc(size_t newSize){
+template<class T, size_t N>
+void HeapArray<T, N>::try_alloc(size_t newSize){
     allocate(newSize);
 }
 
-template<class T>
-void Array<T>::fill(const T& value){
+template<class T, size_t N>
+void HeapArray<T, N>::fill(const T& value){
     for (size_t i=0; i<_alloc; i++){
         _arr[i] = value;
     }
     _size = _alloc;
 }
 
-template<class T>
-void Array<T>::fill(){
+template<class T, size_t N>
+void HeapArray<T, N>::fill(){
     _size = _alloc;
 }
 
-template<class T>
-Array<T> Array<T>::empty_copy() const{
-    Array<T> res(_size);
+template<class T, size_t N>
+HeapArray<T, N> HeapArray<T, N>::empty_copy() const{
+    HeapArray<T, N> res(_size);
     res._size = res._alloc;
     return res;
 }
 
-template<class T>
-void Array<T>::append(const T& element){
+template<class T, size_t N>
+void HeapArray<T, N>::append(const T& element){
     if (full()) allocate( (_alloc == 0) ? 1 : 2*_alloc );
     _arr[_size++] = element;
 }
 
-template<class T>
-void Array<T>::append(const Array<T>& array){
-    if (_size + array._size > _alloc) allocate(_size + array._size);
+template<class T, size_t N>
+void HeapArray<T, N>::append(const HeapArray<T, N>& HeapArray){
+    if (_size + HeapArray._size > _alloc) allocate(_size + HeapArray._size);
 
-    for (size_t i=0; i<array._size; i++){
-        _arr[_size+i] = array._arr[i];
+    for (size_t i=0; i<HeapArray._size; i++){
+        _arr[_size+i] = HeapArray._arr[i];
     }
-    _size += array._size;
+    _size += HeapArray._size;
 }
 
-template<class T>
-void Array<T>::pop(){
+template<class T, size_t N>
+void HeapArray<T, N>::pop(){
     if (_size > 0){
         _size--;
     }
 }
 
-template<class T>
-void Array<T>::_clone_from(const Array<T>& other){
+template<class T, size_t N>
+void HeapArray<T, N>::_clone_from(const HeapArray<T, N>& other){
     delete[] _arr;
 
     _alloc = other._alloc;
@@ -521,15 +645,15 @@ void Array<T>::_clone_from(const Array<T>& other){
 }
 
 
-template<class T>
-void Array<T>::_check_compatibility(const Array<T>& other) const {
+template<class T, size_t N>
+void HeapArray<T, N>::_check_compatibility(const HeapArray<T, N>& other) const {
     if (_size != other._size){
         throw std::runtime_error("Cannot complete operation on arrays of different size");
     }
 }
 
-template<class T>
-void Array<T>::show() const{
+template<class T, size_t N>
+void HeapArray<T, N>::show() const{
     std::cout << "\n[";
     for (size_t i=0; i<_size; i++){
         std::cout << " " << _arr[i];
@@ -537,8 +661,8 @@ void Array<T>::show() const{
     std::cout << " ]\n";
 }
 
-template<class T>
-const T* Array<T>::data() const{
+template<class T, size_t N>
+const T* HeapArray<T, N>::data() const{
     return _arr;
 }
 
@@ -551,7 +675,7 @@ const T* Array<T>::data() const{
 
 
 template<class T, size_t N>
-StaticArray<T, N>::StaticArray(const std::initializer_list<T> arr){
+StackArray<T, N>::StackArray(const std::initializer_list<T> arr){
     if (arr.size() != N) {
         throw std::out_of_range("Initializer list has a fixed size");
     }
@@ -559,7 +683,7 @@ StaticArray<T, N>::StaticArray(const std::initializer_list<T> arr){
 }
 
 template<class T, size_t N>
-StaticArray<T, N> StaticArray<T, N>::operator=(const StaticArray<T, N>& other){
+StackArray<T, N> StackArray<T, N>::operator=(const StackArray<T, N>& other){
     if (&other != this){
         for (size_t i=0; i<size(); i++){
             _arr[i] = other._arr[i];
@@ -569,20 +693,20 @@ StaticArray<T, N> StaticArray<T, N>::operator=(const StaticArray<T, N>& other){
 }
 
 template<class T, size_t N>
-T& StaticArray<T, N>::operator[](int index){
+T& StackArray<T, N>::operator[](int index){
     _check_index(index, size());
     return _arr[(index >= 0) ? index : size()+index];
 }
 
 template<class T, size_t N>
-const T& StaticArray<T, N>::operator[](int index) const{
+const T& StackArray<T, N>::operator[](int index) const{
     _check_index(index, size());
     return _arr[(index >= 0) ? index : size()+index];
 }
 
 template<class T, size_t N>
-StaticArray<T, N> StaticArray<T, N>::operator-() const {
-    StaticArray<T, N> res;
+StackArray<T, N> StackArray<T, N>::operator-() const {
+    StackArray<T, N> res;
     for (size_t i=0; i<size(); i++){
         res._arr[i] = - _arr[i];
     }
@@ -591,7 +715,7 @@ StaticArray<T, N> StaticArray<T, N>::operator-() const {
 
 
 template<class T, size_t N>
-StaticArray<T, N>& StaticArray<T, N>::operator+=(const StaticArray<T, N>& other){
+StackArray<T, N>& StackArray<T, N>::operator+=(const StackArray<T, N>& other){
     for (size_t i=0; i<size(); i++){
         _arr[i] += other._arr[i];
     }
@@ -599,7 +723,7 @@ StaticArray<T, N>& StaticArray<T, N>::operator+=(const StaticArray<T, N>& other)
 }
 
 template<class T, size_t N>
-StaticArray<T, N>& StaticArray<T, N>::operator+=(const T& other){
+StackArray<T, N>& StackArray<T, N>::operator+=(const T& other){
     for (size_t i=0; i<size(); i++){
         _arr[i] += other;
     }
@@ -608,7 +732,7 @@ StaticArray<T, N>& StaticArray<T, N>::operator+=(const T& other){
 
 
 template<class T, size_t N>
-StaticArray<T, N>& StaticArray<T, N>::operator-=(const StaticArray<T, N>& other){
+StackArray<T, N>& StackArray<T, N>::operator-=(const StackArray<T, N>& other){
     for (size_t i=0; i<size(); i++){
         _arr[i] -= other._arr[i];
     }
@@ -616,7 +740,7 @@ StaticArray<T, N>& StaticArray<T, N>::operator-=(const StaticArray<T, N>& other)
 }
 
 template<class T, size_t N>
-StaticArray<T, N>& StaticArray<T, N>::operator-=(const T& other){
+StackArray<T, N>& StackArray<T, N>::operator-=(const T& other){
     for (size_t i=0; i<size(); i++){
         _arr[i] -= other;
     }
@@ -625,20 +749,20 @@ StaticArray<T, N>& StaticArray<T, N>::operator-=(const T& other){
 
 
 template<class T, size_t N>
-void StaticArray<T, N>::fill(const T& value){
+void StackArray<T, N>::fill(const T& value){
     for (size_t i=0; i<N; i++){
         _arr[i] = value;
     }
 }
 
 template<class T, size_t N>
-StaticArray<T, N> StaticArray<T, N>::empty_copy() const{
-    StaticArray<T, N> res;
+StackArray<T, N> StackArray<T, N>::empty_copy() const{
+    StackArray<T, N> res;
     return res;
 }
 
 template<class T, size_t n>
-void StaticArray<T, n>::show() const{
+void StackArray<T, n>::show() const{
     std::cout << "\n[";
     for (size_t i=0; i<size(); i++){
         std::cout << " " << _arr[i];
@@ -647,16 +771,16 @@ void StaticArray<T, n>::show() const{
 }
 
 template<class T, size_t n>
-const T* StaticArray<T, n>::data() const{
+const T* StackArray<T, n>::data() const{
     return _arr;
 }
 
 
 
 
-template<class R>
-Array<R> _operation(const Array<R>& A, const R& b, R (*oper)(const R&, const R&)){
-    Array<R> res(A._alloc);
+template<class R, size_t n>
+HeapArray<R, n> _operation(const HeapArray<R, n>& A, const R& b, R (*oper)(const R&, const R&)){
+    HeapArray<R, n> res(A._alloc);
     res._size = A._size;
     for (size_t i = 0; i < res._size; i++){
         res._arr[i] = oper(A._arr[i], b);
@@ -665,9 +789,9 @@ Array<R> _operation(const Array<R>& A, const R& b, R (*oper)(const R&, const R&)
 }
 
 
-template<class R>
-Array<R> _operation(const R& b, const Array<R>& A, R (*oper)(const R&, const R&)){
-    Array<R> res(A._alloc);
+template<class R, size_t n>
+HeapArray<R, n> _operation(const R& b, const HeapArray<R, n>& A, R (*oper)(const R&, const R&)){
+    HeapArray<R, n> res(A._alloc);
     res._size = A._size;
     for (size_t i = 0; i < res._size; i++){
         res._arr[i] = oper(b, A._arr[i]);
@@ -676,10 +800,10 @@ Array<R> _operation(const R& b, const Array<R>& A, R (*oper)(const R&, const R&)
 }
 
 
-template<class R>
-Array<R> _operation(const Array<R>& A, const Array<R>& B, R (*oper)(const R&, const R&)){
+template<class R, size_t n>
+HeapArray<R, n> _operation(const HeapArray<R, n>& A, const HeapArray<R, n>& B, R (*oper)(const R&, const R&)){
     A._check_compatibility(B);
-    Array<R> res( (A._alloc > B._alloc) ? A._alloc : B._alloc);
+    HeapArray<R, n> res( (A._alloc > B._alloc) ? A._alloc : B._alloc);
     res._size = A._size;
     for (size_t i = 0; i < res._size; i++){
         res._arr[i] = oper(A._arr[i], B._arr[i]);
@@ -689,9 +813,9 @@ Array<R> _operation(const Array<R>& A, const Array<R>& B, R (*oper)(const R&, co
 
 //DEFINE ELEMENT-WISE MATH FUNCTIONS
 
-template<class R>
-Array<R> _mathfunc(const Array<R>& x, R (*f)(const R&)){
-    Array<R> res(x._alloc);
+template<class R, size_t n>
+HeapArray<R, n> _mathfunc(const HeapArray<R, n>& x, R (*f)(const R&)){
+    HeapArray<R, n> res(x._alloc);
     res._size = x._size;
     for (size_t i=0; i<res._size; i++){
         res._arr[i] = f(x._arr[i]);
@@ -701,8 +825,8 @@ Array<R> _mathfunc(const Array<R>& x, R (*f)(const R&)){
 
 
 template<class R, size_t n>
-StaticArray<R, n> _operation(const StaticArray<R, n>& A, const R& b, R (*oper)(const R&, const R&)){
-    StaticArray<R, n> res;
+StackArray<R, n> _operation(const StackArray<R, n>& A, const R& b, R (*oper)(const R&, const R&)){
+    StackArray<R, n> res;
     for (size_t i=0; i < res.size(); i++){
         res._arr[i] = oper(A._arr[i], b);
     }
@@ -710,8 +834,8 @@ StaticArray<R, n> _operation(const StaticArray<R, n>& A, const R& b, R (*oper)(c
 }
 
 template<class R, size_t n>
-StaticArray<R, n> _operation(const R& b, const StaticArray<R, n>& A, R (*oper)(const R&, const R&)){
-    StaticArray<R, n> res;
+StackArray<R, n> _operation(const R& b, const StackArray<R, n>& A, R (*oper)(const R&, const R&)){
+    StackArray<R, n> res;
     for (size_t i=0; i < res.size(); i++){
         res._arr[i] = oper(b, A._arr[i]);
     }
@@ -719,8 +843,8 @@ StaticArray<R, n> _operation(const R& b, const StaticArray<R, n>& A, R (*oper)(c
 }
 
 template<class R, size_t n>
-StaticArray<R, n> _operation(const StaticArray<R, n>& A, const StaticArray<R, n>& B, R (*oper)(const R&, const R&)){
-    StaticArray<R, n> res;
+StackArray<R, n> _operation(const StackArray<R, n>& A, const StackArray<R, n>& B, R (*oper)(const R&, const R&)){
+    StackArray<R, n> res;
     for (size_t i=0; i < res.size(); i++){
         res._arr[i] = oper(A._arr[i], B._arr[i]);
     }
@@ -728,8 +852,8 @@ StaticArray<R, n> _operation(const StaticArray<R, n>& A, const StaticArray<R, n>
 }
 
 template<class R, size_t n>
-StaticArray<R, n> _mathfunc(const StaticArray<R, n>& x, R (*f)(const R&)){
-    StaticArray<R, n> res;
+StackArray<R, n> _mathfunc(const StackArray<R, n>& x, R (*f)(const R&)){
+    StackArray<R, n> res;
     for (size_t i=0; i<n; i++){
         res[i] = f(x._arr[i]);
     }
@@ -767,7 +891,7 @@ auto _safemax_impl(const ArrayType& A){
     }
 
     if (i == A.size()){
-        throw std::overflow_error("All numbers are nan or +-inf in the given array");
+        throw std::overflow_error("All numbers are nan or +-inf in the given HeapArray");
     }
 
     auto tmp = res;
@@ -808,7 +932,7 @@ auto _safemin_impl(const ArrayType& A){
     }
 
     if (i == A.size()){
-        throw std::overflow_error("All numbers are nan or +-inf in the given array");
+        throw std::overflow_error("All numbers are nan or +-inf in the given HeapArray");
     }
 
     auto tmp = res;
@@ -839,30 +963,30 @@ inline T tan(const T& x) {return tan(x);}
 
 
 
-template<class T>
-inline Array<T> abs(const Array<T>& x){ return _mathfunc(x, abs);}
+template<class T, size_t N>
+inline HeapArray<T, N> abs(const HeapArray<T, N>& x){ return _mathfunc(x, abs);}
 
-template<class T>
-inline Array<T> sin(const Array<T>& x){ return _mathfunc(x, sin);}
+template<class T, size_t N>
+inline HeapArray<T, N> sin(const HeapArray<T, N>& x){ return _mathfunc(x, sin);}
 
-template<class T>
-inline Array<T> cos(const Array<T>& x){ return _mathfunc(x, cos);}
+template<class T, size_t N>
+inline HeapArray<T, N> cos(const HeapArray<T, N>& x){ return _mathfunc(x, cos);}
 
-template<class T>
-inline Array<T> tan(const Array<T>& x){ return _mathfunc(x, tan);}
+template<class T, size_t N>
+inline HeapArray<T, N> tan(const HeapArray<T, N>& x){ return _mathfunc(x, tan);}
 
-
-template<class T, size_t n>
-inline StaticArray<T, n> abs(const StaticArray<T, n>& x){ return _mathfunc(x, abs);}
 
 template<class T, size_t n>
-inline StaticArray<T, n> sin(const StaticArray<T, n>& x){ return _mathfunc(x, sin);}
+inline StackArray<T, n> abs(const StackArray<T, n>& x){ return _mathfunc(x, abs);}
 
 template<class T, size_t n>
-inline StaticArray<T, n> cos(const StaticArray<T, n>& x){ return _mathfunc(x, cos);}
+inline StackArray<T, n> sin(const StackArray<T, n>& x){ return _mathfunc(x, sin);}
 
 template<class T, size_t n>
-inline StaticArray<T, n> tan(const StaticArray<T, n>& x){ return _mathfunc(x, tan);}
+inline StackArray<T, n> cos(const StackArray<T, n>& x){ return _mathfunc(x, cos);}
+
+template<class T, size_t n>
+inline StackArray<T, n> tan(const StackArray<T, n>& x){ return _mathfunc(x, tan);}
 
 
 bool _isValid(auto value) {
@@ -870,13 +994,13 @@ bool _isValid(auto value) {
 }
 
 
-template<class T>
-const auto& nested_element(const Array<T>& A){
+template<class T, size_t N>
+const auto& nested_element(const HeapArray<T, N>& A){
     return nested_element(A[0]);
 }
 
 template<class T, size_t N>
-const auto& nested_element(const StaticArray<T, N>& A){
+const auto& nested_element(const StackArray<T, N>& A){
     return nested_element(A[0]);
 }
 
@@ -890,8 +1014,8 @@ bool has_nan_inf(const T& A){
     return !_isValid(A);
 }
 
-template<class T>
-bool has_nan_inf(const Array<T>& A){
+template<class T, size_t N>
+bool has_nan_inf(const HeapArray<T, N>& A){
     
     for(size_t i=0; i<A.size(); i++){
         if (has_nan_inf(A[i])){
@@ -902,7 +1026,7 @@ bool has_nan_inf(const Array<T>& A){
 }
 
 template<class T, size_t n>
-bool has_nan_inf(const StaticArray<T, n>& A){
+bool has_nan_inf(const StackArray<T, n>& A){
     
     for(size_t i=0; i<A.size(); i++){
         if (has_nan_inf(A[i])){
@@ -919,7 +1043,7 @@ void _check_index(const int& index, const int& size){
     else{
         if (index > -size-1){return;}
     }
-    throw std::out_of_range("Index " + std::to_string(index) + " is out of range for an array of size " + std::to_string(size));
+    throw std::out_of_range("Index " + std::to_string(index) + " is out of range for an HeapArray of size " + std::to_string(size));
 }
 
 

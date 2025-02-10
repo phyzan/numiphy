@@ -38,9 +38,9 @@ class CodeGenerator:
             if ode_style:
                 if self.is_arr:
                     if stack:
-                        args = f'const double& t, const arr::StaticArray<double, {self.Nsys}>& q'
+                        args = f'const double& t, const vec::StackArray<double, {self.Nsys}>& q'
                     else:
-                        args = f'const double& t, const arr::Array<double>& q'
+                        args = f'const double& t, const vec::HeapArray<double>& q'
                 else:
                     args = f'const double& t, const double& q'
                     
@@ -69,9 +69,9 @@ class CodeGenerator:
 
         if self.is_arr:
             if stack:
-                ret_type = f"arr::StaticArray<double, {self.Nsys}>"
+                ret_type = f"vec::StackArray<double, {self.Nsys}>"
             else:
-                ret_type = f"arr::Array<double>"
+                ret_type = f"vec::HeapArray<double>"
         else:
             ret_type = 'double'
         
