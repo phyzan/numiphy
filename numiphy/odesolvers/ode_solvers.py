@@ -493,7 +493,7 @@ class SymbolicOde:
             with open(cpp_file, "w") as f:
                 f.write(cpp_code)
 
-            compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {src_path}/arrays.cpp {cpp_file} -o {so_file}$(python3-config --extension-suffix)"
+            compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {cpp_file} -o {so_file}$(python3-config --extension-suffix)"
 
             print('Compiling ODE...')
             subprocess.run(compile_comm, shell=True)
