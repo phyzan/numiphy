@@ -166,6 +166,8 @@ class ODE:
 
     def solve(self, ics: tuple[float, np.ndarray], t, dt, **kwargs)->OdeResult:...
 
+    def solve_all(self, ics: list[tuple[float, np.ndarray]], t, dt, **kwargs)->list[OdeResult]:...
+
     def copy(self)->ODE:...
     
 
@@ -294,7 +296,7 @@ class PythonicODE(ODE):
         dt = bisectright(h, ti, ti+dt) - ti
         return dt, update(self.df, ti, f1, dt, *args)
 
-    def solve(self, ics: tuple[float, np.ndarray], t: float, dt: float, method: literal='RK4', **kwargs)->Tuple[np.ndarray, np.ndarray]:
+    def solve(self, ics: tuple[float, np.ndarray], t: float, dt: float, method: literal='RK4', **kwargs)->OdeResult:
         '''
         Solve the ode
 
@@ -325,6 +327,12 @@ class PythonicODE(ODE):
         Array of the function values in each step. This can be an array of arrays, depending on how the user defined the initial conditions.
         '''
         return getattr(self, method)(ics=ics, t=t, dt=dt, **kwargs)
+    
+    def solve_all(self, ics, t, dt, **kwargs)->list[OdeResult]:
+        res = []
+        for ics_i in ics:
+            res.append(self.solve(ics_i, t, dt, **kwargs))
+        return res
 
     def euler(self, ics, t, dt, **kwargs):
         '''
@@ -417,6 +425,26 @@ class PythonicODE(ODE):
         
 #         return self.custom_solver(t, dt, verlet_step, lte=3, **kwargs)
 
+def import_lowlevel_module(directory: str, module_name):
+    so_file = os.path.join(directory, module_name)
+    so_full_path = so_file + _suffix()
+    spec = importlib.util.spec_from_file_location(module_name, so_full_path)
+    temp_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(temp_module)
+    return temp_module
+
+def get_virtualenv_path():
+    """Used to work out path to install compiled binaries to."""
+    if hasattr(sys, 'real_prefix'):
+        return sys.prefix
+
+    if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
+        return sys.prefix
+
+    if 'conda' in sys.prefix:
+        return sys.prefix
+
+    return None
 
 class LowLevelODE(ODE):
 
@@ -455,34 +483,40 @@ class SymbolicOde:
     def to_lowlevel(self, stack=True)->LowLevelODE:
         return self._lowlevel_stack.copy() if stack else self._lowlevel_heap.copy()
     
+    def generate_cpp_file(self, directory, module_name, stack: bool):
+        if not os.path.exists(directory):
+            raise RuntimeError(f'Directory "{directory} does not exist"')
+        code = self.codegen.get_cpp(ode_style=True, stack=stack)
+        src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "odepack")
+        cpp_code = f'#include "{os.path.join(src_path, 'pyode.hpp')}"\n\n{code}\n\n'
+        cpp_code += f"PYBIND11_MODULE({module_name}, m){{\ndefine_ode_module(m, MyFunc);\n}}"
+        cpp_file = os.path.join(directory, f"{module_name}.cpp")
+
+        with open(cpp_file, "w") as f:
+            f.write(cpp_code)
+
+        return os.path.join(directory, f'{module_name}.cpp')
+
+    def compile(self, directory: str, module_name, stack=True):
+
+        if not os.path.exists(directory):
+            raise RuntimeError(f"Cannot compile ode at {directory}: Path does not exist")
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cpp_file = self.generate_cpp_file(temp_dir, module_name, stack)
+
+            compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {cpp_file} -o {os.path.join(directory, module_name)}$(python3-config --extension-suffix)"
+            print('Compiling ODE...')
+            subprocess.check_call(compile_comm, shell=True)
+            print('Done')
+        
     def _to_lowlevel(self, stack=True)->LowLevelODE:
         c = self.__class__._counter
         modname = f"ode_module{c}"
-        code = self.codegen.get_cpp(ode_style=True, stack=stack)
 
-        src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "odepack")
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            cpp_code = f'#include "{os.path.join(src_path, 'pyode.hpp')}"\n\n{code}\n\n'
-            cpp_code += f"PYBIND11_MODULE({modname}, m){{\ndefine_ode_module(m, MyFunc);\n}}"
-            cpp_file = os.path.join(temp_dir, f"tmp_cpp_module{c}.cpp")
-
-            so_file = os.path.join(temp_dir, f"{modname}")
-            so_full_path = so_file + _suffix()
-
-            with open(cpp_file, "w") as f:
-                f.write(cpp_code)
-
-            compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {cpp_file} -o {so_file}$(python3-config --extension-suffix)"
-
-            print('Compiling ODE...')
-            subprocess.run(compile_comm, shell=True)
-            print('Done')
-
-            #import .so file
-            spec = importlib.util.spec_from_file_location(modname, so_full_path)
-            temp_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(temp_module)
+        with tempfile.TemporaryDirectory() as so_dir:
+            self.compile(so_dir, modname, stack=stack)
+            temp_module = import_lowlevel_module(so_dir, modname)
 
         self.__class__._counter += 1
         return temp_module.ode()

@@ -85,7 +85,7 @@ class ODE{
 
         const OdeResult<Tx, Tf> solve(const ICS<Tx, Tf>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr, const bool display = false) const;
 
-        const vec::HeapArray<OdeResult<Tx, Tf>> solve_all(const std::vector<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr) const;
+        const vec::HeapArray<OdeResult<Tx, Tf>> solve_all(const vec::HeapArray<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr, int threads=-1) const;
 
     protected:
         ode<Tx, Tf> _ode;
@@ -267,11 +267,12 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const ICS<Tx, Tf>& ics, const Tx& x, 
 }
 
 template<class Tx, class Tf>
-const vec::HeapArray<OdeResult<Tx, Tf>> ODE<Tx, Tf>::solve_all(const std::vector<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method, const int max_frames, const vec::HeapArray<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond) const{
+const vec::HeapArray<OdeResult<Tx, Tf>> ODE<Tx, Tf>::solve_all(const vec::HeapArray<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method, const int max_frames, const vec::HeapArray<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, int threads) const{
     const size_t n = ics.size();
     vec::HeapArray<OdeResult<Tx, Tf>> res(n, true);
 
-    #pragma omp parallel for schedule(dynamic)
+    threads = (threads == -1) ? omp_get_max_threads() : threads;
+    #pragma omp parallel for schedule(dynamic) num_threads(threads)
     for (size_t i=0; i<n; i++){
         res[i] = solve(ics[i], x, dx, err, method, max_frames, args, getcond, breakcond, false);
     }
@@ -312,8 +313,6 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const ICS<Tx, Tf>& ics, const Tx& x
     if (max_frames > 0){
         x_arr.allocate(max_frames);
         f_arr.allocate(max_frames);
-        x_arr.fill();
-        f_arr.fill();
     }
 
     x_arr.append(xi);
