@@ -433,18 +433,19 @@ def import_lowlevel_module(directory: str, module_name):
     spec.loader.exec_module(temp_module)
     return temp_module
 
-def get_virtualenv_path():
-    """Used to work out path to install compiled binaries to."""
-    if hasattr(sys, 'real_prefix'):
-        return sys.prefix
+def compile(cpp_path, so_dir, module_name):
 
-    if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
-        return sys.prefix
+    if not os.path.exists(cpp_path):
+        raise RuntimeError(f"CPP file path does not exist")
+    
+    if not os.path.exists(so_dir):
+        raise RuntimeError(f"Cannot compile ode at {so_dir}: Path does not exist")
 
-    if 'conda' in sys.prefix:
-        return sys.prefix
+    compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {cpp_path} -o {os.path.join(so_dir, module_name)}$(python3-config --extension-suffix)"
+    print('Compiling ODE...')
+    subprocess.check_call(compile_comm, shell=True)
+    print('Done')
 
-    return None
 
 class LowLevelODE(ODE):
 
@@ -498,17 +499,13 @@ class SymbolicOde:
         return os.path.join(directory, f'{module_name}.cpp')
 
     def compile(self, directory: str, module_name, stack=True):
-
         if not os.path.exists(directory):
             raise RuntimeError(f"Cannot compile ode at {directory}: Path does not exist")
         
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack)
-
-            compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {cpp_file} -o {os.path.join(directory, module_name)}$(python3-config --extension-suffix)"
-            print('Compiling ODE...')
-            subprocess.check_call(compile_comm, shell=True)
-            print('Done')
+            compile(cpp_file, directory, module_name)
+        
         
     def _to_lowlevel(self, stack=True)->LowLevelODE:
         c = self.__class__._counter
