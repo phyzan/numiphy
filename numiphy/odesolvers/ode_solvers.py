@@ -745,6 +745,40 @@ class VariationalHamiltonianOrbit(VariationalOrbit, HamiltonianOrbit):
         return VariationalHamiltonianOrbit(self.ode.copy(), self.nd)
 
 
+class FlowOrbit(Orbit):
+
+    def __init__(self, ode, nd):
+        Orbit.__init__(self, ode, nd)
+
+    @property
+    def nd(self):
+        return self.dof
+
+    @property
+    def x(self):
+        return self._data[:, 1:].transpose()
+
+    def copy(self):
+        return FlowOrbit(self.ode.copy(), self.nd)
+
+
+class VariationalFlowOrbit(VariationalOrbit, FlowOrbit):
+
+    def __init__(self, ode, nd):
+        VariationalOrbit.__init__(self, ode, nd)
+
+    @property
+    def nd(self):
+        return self.dof//2
+    
+    @property
+    def delx(self):
+        return self._data[:, 1+self.nd:]
+
+    def copy(self):
+        return VariationalFlowOrbit(self.ode.copy(), self.nd)
+
+
 class HamiltonianSystem:
 
     __args: tuple[sym.Expr, tuple[sym.Variable, ...], tuple[sym.Variable, ...]]

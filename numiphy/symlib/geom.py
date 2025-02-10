@@ -13,53 +13,53 @@ import math
 
 
 
-class Vector2D:
+# class Vector2D:
 
 
-    def __init__(self, x, y):
-        self.x = float(x)
-        self.y = float(y)
+#     def __init__(self, x, y):
+#         self.x = float(x)
+#         self.y = float(y)
 
-    def __neg__(self):
-        return Vector2D(-self.x, -self.y)
+#     def __neg__(self):
+#         return Vector2D(-self.x, -self.y)
 
-    def __add__(self, other: Vector2D):
-        return Vector2D(self.x+other.x, self.y+other.y)
+#     def __add__(self, other: Vector2D):
+#         return Vector2D(self.x+other.x, self.y+other.y)
 
-    def __sub__(self, other: Vector2D):
-        return Vector2D(self.x-other.x, self.y-other.y)
+#     def __sub__(self, other: Vector2D):
+#         return Vector2D(self.x-other.x, self.y-other.y)
 
-    def __mul__(self, other):
-        if isinstance(other, (int, float)):
-            return Vector2D(other*self.x, other*self.y)
-        elif isinstance(other,Vector2D):
-            return self.x*other.x + self.y*other.y
-        else:
-            raise ValueError(f"Cannot multiply Vector2D with object of type {other.__class__}")
+#     def __mul__(self, other):
+#         if isinstance(other, (int, float)):
+#             return Vector2D(other*self.x, other*self.y)
+#         elif isinstance(other,Vector2D):
+#             return self.x*other.x + self.y*other.y
+#         else:
+#             raise ValueError(f"Cannot multiply Vector2D with object of type {other.__class__}")
     
-    def __rmul__(self, other):
-        return self*other
+#     def __rmul__(self, other):
+#         return self*other
 
-    def norm(self):
-        return math.sqrt(self.x**2+self.y**2)
+#     def norm(self):
+#         return math.sqrt(self.x**2+self.y**2)
 
-    def unit(self):
-        norm = self.norm()
-        return Vector2D(self.x/norm, self.y/norm)
+#     def unit(self):
+#         norm = self.norm()
+#         return Vector2D(self.x/norm, self.y/norm)
 
-    def cross(self, other: Vector2D):
-        return self.x*other.y - self.y*other.x
+#     def cross(self, other: Vector2D):
+#         return self.x*other.y - self.y*other.x
     
-    def cross_z(self):
-        return Vector2D(self.y, -self.x)
+#     def cross_z(self):
+#         return Vector2D(self.y, -self.x)
 
-    def toarray(self):
-        return np.array([self.x, self.y])
+#     def toarray(self):
+#         return np.array([self.x, self.y])
 
-    def __repr__(self):
-        r = [self.x, self.y]
-        r = [int(i) if int(i)==i else i for i in r]
-        return '({0}, {1})'.format(*r)
+#     def __repr__(self):
+#         r = [self.x, self.y]
+#         r = [int(i) if int(i)==i else i for i in r]
+#         return '({0}, {1})'.format(*r)
 
 
 class GeomObject(ABC):
@@ -80,7 +80,7 @@ class GeomObject(ABC):
         pass
     
     @abstractmethod
-    def coords(self, *u):
+    def coords(self, *u)->np.ndarray:
         pass
     
     @abstractmethod
@@ -168,12 +168,12 @@ class Point(GeomObject):
         return [()]
 
     def coords(self):
-        return self._coords
+        return np.array(self._coords)
     
     def normal_vector(self):
         if self.nd != 1:
             raise ValueError('A point must lie on a 1d line so that it has a uniquely defined normal Vector2D')
-        return (1,)
+        return np.array([1.])
 
 
 class Line(GeomObject):
@@ -231,10 +231,10 @@ class Line(GeomObject):
         return f'Line({self.nd}d-space, u = {self.lims})'
 
     def coords(self, u):
-        return [xi(u) for xi in self._x_funcs]
+        return np.array([xi(u) for xi in self._x_funcs])
     
     def tangent(self, u):
-        return [xi(u) for xi in self._xdot_funcs]
+        return np.array([xi(u) for xi in self._xdot_funcs])
     
     def param_values(self, grid: grids.Grid)->Iterable:
         self._assert_compatibility(grid)
@@ -274,7 +274,7 @@ class Line(GeomObject):
         return normal_vector(tangent_vec)
         
     def reverse(self):
-        return Line(self._x, (self.lims[1], self.lims[0]))
+        return self.__class__(self._x, (self.lims[1], self.lims[0]))
 
 
 
@@ -283,18 +283,18 @@ class Line2D(Line):
     def __init__(self, x: sym.Expr, y: sym.Expr, lims: tuple[float, float]):
         super().__init__([x, y], lims)
 
-
-# class StraightLine2D(Line):
-
-#     def __init__(self, x0, y0, x1, y1):
-#         self.x0, self.y0, self.x1, self.y1 = x0, y0, x1, y1
-#         super().__init__([self.xcoord, self.ycoord], lims=(0, 1))
-
-#     def xcoord(self, u):
-#         return self.x0 + u*(self.x1-self.x0)
+    def x(self, u):
+        return self._x_funcs[0](u)
     
-#     def ycoord(self, u):
-#         return self.y0 + u*(self.y1-self.y0)
+    def y(self, u):
+        return self._x_funcs[1](u)
+    
+    def xdot(self, u):
+        return self._xdot_funcs[0](u)
+    
+    def ydot(self, u):
+        return self._xdot_funcs[1](u)
+
 
 
 class Surface(GeomObject):
@@ -316,6 +316,32 @@ def normal_vector(*vecs):
         v[i] = (-1)**i*np.linalg.det(np.vstack((m[:i], m[i+1:])))
     return v
 
+class Parallelogram(Line2D):
+
+    def __init__(self, x1, x2, y1, y2):
+        self.x1, self.x2, self.y1, self.y2 = x1, x2, y1, y2
+        self.a, self.b = 0, 4
+        self.Lx = x2-x1
+        self.Ly = y2-y1
+        self.center = [(x1+x2)/2, (y1+y2)/2]
+
+        x0, y0 = x1, y1
+        a, b = self.Lx, self.Ly
+        u = sym.Variable('u')
+        x = sym.Piecewise((x0+u*a, u<1), (x0+a, u<2), (x0+a*(3-u), u<3), (x0, True))
+
+        y = sym.Piecewise((y0, u<1), (y0+(u-1)*b, u<2), (y0+b, u<3), (y0+(4-u)*b, True))
+        super().__init__(x, y, lims=(0, 4))
+
+    def split(self)->list[Parallelogram]:
+        a, b, c, d = self.x1, self.x2, self.y1, self.y2
+        shapes = []
+        xaxis = [(a, (a+b)/2), ((a+b)/2, b)]
+        yaxis = [(c, (c+d)/2), ((c+d)/2, d)]
+        for x in xaxis:
+            for y in yaxis:
+                shapes.append(Parallelogram(*x, *y))
+        return shapes
 
 def Circle(r: float, center: tuple[float])->Line:
 
@@ -327,34 +353,8 @@ def Circle(r: float, center: tuple[float])->Line:
     return Line2D(x, y, (0, 2*math.pi))
 
 
-# def Square(a: float, start: tuple[float]):
-
-#     x0, y0 = start
-#     def coords(u):
-#         if 0 <= u < 1:
-#             return x0 + u*a
-#         elif 1 <= u < 2:
-#             return x0 + a
-#         elif 2 <= u < 3:
-#             return x0 + a*(3-u)
-#         else:
-#             return x0
-        
-#     def y(u):
-#         if 0 <= u < 1:
-#             return y0
-#         elif 1 <= u < 2:
-#             return y0 + (u-1)*a
-#         elif 2 <= u < 3:
-#             return y0 + a
-#         else:
-#             return y0 + a*(4-u)
-        
-#     return Line([x, y], lims=(0, 4))
-
-
-
-
+def Square(a: float, start: tuple[float]):
+    return Parallelogram(start[0], start[0]+a, start[1], start[1]+a)
 
 '''
 
