@@ -193,7 +193,8 @@ class _Expr:
         elif isinstance(self, Operation):
             obj = self.makenew('replace', items)
             if obj != self:
-                return obj.replace(items)
+                return obj
+                # return obj.replace(items)
             else:
                 rest = items.copy()
                 while rest:
@@ -204,11 +205,12 @@ class _Expr:
                             return self.argsub(val, *q).replace(rest)
                 return self
         elif isinstance(self, Node):
-            obj = self.makenew('replace', items)
-            if obj != self:
-                return obj.replace(items)
-            else:
-                return self
+            return self.makenew('replace', items)
+            # obj = self.makenew('replace', items)
+            # if obj != self:
+            #     return obj.replace(items)
+            # else:
+            #     return self
         else:
             return self
 
@@ -327,7 +329,6 @@ class _Expr:
             return ()
         else:
             x_all: list[_Symbol] = []
-                
             for arg in self.args:
                 vars = arg.variables
                 for v in vars:
@@ -1558,7 +1559,7 @@ class _Piecewise(Node):
             if case[1] is False:
                 continue
             elif case[1] is True:
-                newcases.append(case)
+                newcases.append((cls._asexpr(case[0]), True))
                 break
             else:
                 newcases.append((cls._asexpr(case[0]), case[1]))

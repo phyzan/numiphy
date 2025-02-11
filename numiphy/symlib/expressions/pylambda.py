@@ -33,7 +33,7 @@ class CodeGenerator:
                 if self.args:
                     args += ', ' + ', '.join([str(i) for i in self.args])
             else:
-                args = ', '.join([str(v) for v in self.symbols+list(self.args)])
+                args = ', '.join([str(v) for v in list(self.symbols)+list(self.args)])
         elif lang == 'c++':
             if ode_style:
                 if self.is_arr:
@@ -91,7 +91,7 @@ def _multidim_lambda_list(arg):
     if hasattr(arg, '__iter__'):
         return f"[{', '.join([_multidim_lambda_list(f) for f in arg])}]"
     elif isinstance(arg, Expr):
-        return arg.repr(land="python", lib = "math")
+        return arg.repr(lang="python", lib = "numpy")
     else:
         raise ValueError(f"Item of type '{arg.__class__}' not supported for lambdifying")
     
@@ -113,7 +113,7 @@ class ScalarLambdaExpr:
     def __init__(self, expr: Expr, *symbols: Variable):
         self.expr = expr
         self.symbols = symbols
-        self._callable = self.expr.lambdify(*symbols)
+        self._callable = self.expr.lambdify(symbols, lib='numpy')
 
     def __call__(self, *args)->float|complex:
         return self._callable(*args)

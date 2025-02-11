@@ -67,11 +67,11 @@ class VectorField2D:
         which means dR/ds is the unit vector of the vector field at each point
         '''
         ics = (0, np.array([x0, y0]))
-        res = ods.PythonicODE(lambda s, q: self.unitvec(*q, *args)).solve((0, np.array([x0, y0])), s, ds, err=err, display=False).func
+        res = ods.PythonicODE(lambda s, q: self.unitvec(*q, *args)).solve(ics, s, ds, err=err, display=False).func
         return res.transpose()
         
     def loop(self, q, r, *args):
-        c = Circle(*q, r)
+        c = Circle(r, q)
         return self.flow(c, *args)
     
     def plot(self, grid: grids.Grid, *args, **kwargs):
@@ -111,5 +111,5 @@ class VectorField2D:
         return fig, ax
     
     def plot_circle(self, q, r, grid: grids.Grid, n=400, *args, **kwargs):
-        c = Circle(*q, r)
+        c = Circle(r, q)
         return VectorField2D.plot_line(self, c, grid, n, *args, **kwargs)
