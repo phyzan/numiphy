@@ -194,7 +194,6 @@ class _Expr:
             obj = self.makenew('replace', items)
             if obj != self:
                 return obj
-                # return obj.replace(items)
             else:
                 rest = items.copy()
                 while rest:
@@ -206,11 +205,6 @@ class _Expr:
                 return self
         elif isinstance(self, Node):
             return self.makenew('replace', items)
-            # obj = self.makenew('replace', items)
-            # if obj != self:
-            #     return obj.replace(items)
-            # else:
-            #     return self
         else:
             return self
 
@@ -255,6 +249,8 @@ class _Expr:
                 return self.init(self.matheval(*nums), *rest)
         elif isinstance(self, (_Derivative, _Integral)):
             return self.init(self.f.eval())
+        elif isinstance(self, _Piecewise):
+            return self.makenew('eval')
         elif isinstance(self, _Subs) and self.isNumber:
             return self._asexpr(float(self.get_ndarray({})))
         else:
@@ -1545,17 +1541,13 @@ class _DummyScalarField(_ScalarField):
 
 
 class _Piecewise(Node):
-
-    #######
-    ####### dont forget to add the an if statement in e.g. .eval(). Check all super parent methods.
-    #######
-    #######
+    
     Args: tuple[tuple[_Expr, Condition], ...]
 
     def __new__(cls, *cases: tuple[_Expr, Condition], simplify=True):
-        assert cases[-1][1] is True
         newcases = []
         for case in cases:
+            assert isinstance(case[1], Condition)
             if case[1] is False:
                 continue
             elif case[1] is True:
@@ -1564,6 +1556,7 @@ class _Piecewise(Node):
             else:
                 newcases.append((cls._asexpr(case[0]), case[1]))
         cases = tuple(newcases)
+        assert cases[-1][1] is True
         
         if len(cases) == 1:
             return cases[0][0]
@@ -1594,6 +1587,9 @@ class _Piecewise(Node):
     def makenew(self, changefunc, *args, **kwargs):
         return self.__class__(*[(getattr(arg[0], changefunc)(*args, **kwargs), arg[1].do(changefunc, *args, **kwargs)) for arg in self.Args[:-1]], (getattr(self.Args[-1][0], changefunc)(*args, **kwargs), True))
 
+    def neg(self):
+        return self.init(*[-arg for arg in self.args])
+    
     def _diff(self, var: _Symbol):
         return self.init(*[item._diff(var) for item in self.args])
     

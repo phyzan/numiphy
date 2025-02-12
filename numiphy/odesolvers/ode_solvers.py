@@ -600,6 +600,9 @@ class Orbit:
             self._remake(self._data[0, 0], self._data[0, 1:])
     
     def set_ics(self, t0: float, f0: np.ndarray):
+        f0 = np.array(f0)
+        if f0.shape != (self.dof,):
+            raise ValueError(f"Initial conditios need to be a 1D array of size {self.dof}")
         self._remake(t0, f0)
 
     def integrate(self, Delta_t, dt, func = "solve", **kwargs):
@@ -635,8 +638,8 @@ class VariationalOrbit(Orbit):
 
     _logksi: list[float]
 
-    def __init__(self, ode, dof):
-        Orbit.__init__(self, ode, 2*dof)
+    def __init__(self, ode, orbit_dof):#dof param is param without considering the variational equations, so its half the dof of the ode given.
+        Orbit.__init__(self, ode, 2*orbit_dof)
         self._logksi = []
 
     @property
