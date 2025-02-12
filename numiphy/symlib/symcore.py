@@ -234,7 +234,7 @@ class _Expr:
         elif isinstance(self, _Mathfunc):
             arg = self.args[0].eval()
             if isinstance(arg, _Number):
-                return self._asexpr(self.evalfunc(arg.value))
+                return self._asexpr(self.eval_at(arg.value))
             else:
                 return self.init(arg)
         elif isinstance(self, Operation):

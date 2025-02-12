@@ -1,7 +1,7 @@
 from .symcore import *
 from .symcore import _Add, _Mul, _Integer, _Complex, _Expr
 from typing import Callable
-import math, numpy as np
+import math, cmath, numpy as np
 
 
 class _Mathfunc(Node):
@@ -18,6 +18,13 @@ class _Mathfunc(Node):
             obj = super().__new__(cls)
             obj.Args = (arg,)
         return obj
+    
+    @classmethod
+    def eval_at(cls, value):
+        if isinstance(value, complex):
+            return getattr(cmath, cls.name)(value)
+        else:
+            return getattr(math, cls.name)(value)
 
     def repr(self, lang="python", lib=""):
         if lang == 'python' and lib == '':
@@ -46,10 +53,6 @@ class _Mathfunc(Node):
     @property
     def Arg(self):
         return self.args[0]
-    
-    @property
-    def evalfunc(self):
-        return getattr(math, self.name)
 
     def get_ndarray(self, x, **kwargs):
         return self.npfunc(self.Arg.get_ndarray(x, **kwargs))
@@ -204,9 +207,9 @@ class _Abs(_Mathfunc):
         elif lang == 'c++':
             return f'{lib}::'+base
 
-    @property
-    def evalfunc(self):
-        return abs
+    @classmethod
+    def eval_at(cls, value):
+        return abs(value)
 
 
 class _Real(_Mathfunc):
@@ -238,8 +241,9 @@ class _Real(_Mathfunc):
     def _diff(self, var):
         return self.init(self.Arg._diff(var))
     
-    def evalfunc(self, x):
-        return getattr(x, 'real')
+    @classmethod
+    def eval_at(cls, value):
+        return getattr(value, 'real')
 
 
 class _Imag(_Mathfunc):
@@ -271,8 +275,9 @@ class _Imag(_Mathfunc):
     def _diff(self, var):
         return self.init(self.Arg._diff(var))
     
-    def evalfunc(self, x):
-        return getattr(x, 'imag')
+    @classmethod
+    def eval_at(cls, value):
+        return getattr(value, 'imag')
 
 
 def _bin(n, k):
