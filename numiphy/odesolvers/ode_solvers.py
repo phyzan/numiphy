@@ -166,7 +166,7 @@ class ODE:
 
     def solve(self, ics: tuple[float, np.ndarray], t, dt, **kwargs)->OdeResult:...
 
-    def solve_all(self, ics: list[tuple[float, np.ndarray]], t, dt, **kwargs)->list[OdeResult]:...
+    def solve_all(self, params: list[dict], threads=-1)->list[OdeResult]:...
 
     def copy(self)->ODE:...
     
@@ -452,6 +452,11 @@ class LowLevelODE(ODE):
 
     def copy(self)->LowLevelODE:...
 
+    @classmethod
+    def dsolve_all(cls, data: list[tuple[LowLevelODE, dict]], threads=-1)->list[OdeResult]:...
+
+
+
 
 class SymbolicOde:
 
@@ -704,6 +709,7 @@ class VariationalOrbit(Orbit):
     def integrate(self,  Delta_t, dt, func = "solve", **kwargs):
         res = Orbit.integrate(self, Delta_t, dt, func, **kwargs)
         self._absorb_ksi(res)
+        return res
 
     def copy(self):
         return VariationalOrbit(self.ode.copy(), self.dof//2)
@@ -799,6 +805,10 @@ class VariationalFlowOrbit(VariationalOrbit, FlowOrbit):
     @property
     def nd(self):
         return self.dof//2
+
+    @property
+    def x(self):
+        return self._data[:, 1:1+self.nd].transpose()
     
     @property
     def delx(self):
@@ -877,3 +887,23 @@ class HamiltonianSystem:
             delq0 = [1., *((2*self.nd-1)*[0.])]
         orb.set_ics(0., [*q0, *delq0])
         return orb
+
+def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, method='RK4', max_frames=-1, args=(), threads=-1)->list[OdeResult]:
+
+    cls = [orb.ode.__class__ for orb in orbits]
+    if not all([cls_i is cls[0] for cls_i in cls]) or not hasattr(cls[0], 'dsolve_all'):
+        print(cls[0].__class__.__name__)
+        raise ValueError("All orbits passed in the parallel integrator must originate from a copy of the same orbit or from the same compiled module")
+    ode_data = []
+    for orb in orbits:
+        ics = orb.get_current_ics()
+        ode_data.append((orb.ode, dict(ics = ics, t=ics[0]+Delta_t, dt=dt, err=err, method=method, max_frames=max_frames, args=args)))
+
+    cls: LowLevelODE = cls[0]
+
+    res = cls.dsolve_all(ode_data, threads)
+
+    for i in range(len(orbits)):
+        orbits[i]._absorb_oderes(res[i])
+    
+    return res
