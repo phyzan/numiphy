@@ -8,10 +8,10 @@
 
 
 template<class Tx, class Tf>
-using ode = Tf(*)(const Tx&, const Tf&, const Tx*);
+using ode = Tf(*)(const Tx&, const Tf&, const std::vector<Tx>&);
 
 template<class Tx, class Tf>
-using stepfunc = Tf(*)(ode<Tx, Tf>, const Tx&, const Tf&, const Tx&, const Tx*);
+using stepfunc = Tf(*)(ode<Tx, Tf>, const Tx&, const Tf&, const Tx&, const std::vector<Tx>&);
 
 template<class Tx, class Tf>
 using cond = std::function<bool(const Tx&, const Tx&, const Tf&, const Tf&)>;
@@ -20,22 +20,22 @@ template<class Any, class prec>
 prec bisect_right(const Any& obj, const prec& a, const prec& b, const prec& tol = 1e-15);
 
 template<class Tx, class Tf>
-Tf _euler(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args);
+Tf _euler(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args);
 
 template<class Tx, class Tf>
-Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args);
+Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args);
 
 template<class Tx, class Tf>
-Tf _RK4(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args);
+Tf _RK4(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args);
 
 template<class Tx, class Tf>
-Tf _RK7(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args);
+Tf _RK7(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args);
 
 template<class Tx, class Tf>
-Tf _cromer(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args);
+Tf _cromer(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args);
 
 template<class Tx, class Tf>
-Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args);
+Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args);
 
 template<class Tx, class Tf>
 struct OdeResult{
@@ -55,7 +55,7 @@ struct StepGetter{
     Tx x_initial;
     Tf f_initial;
     cond<Tx, Tf> condition;
-    const Tx* args;
+    const std::vector<Tx>& args;
 
     int objfun(const Tx& x) const;
 
@@ -70,6 +70,20 @@ struct ICS{
 
 
 template<class Tx, class Tf>
+struct OdeArgs{
+
+    ICS<Tx, Tf> ics;
+    Tx x;
+    Tx dx;
+    Tx err = 1e-8;
+    std::string method = "RK4";
+    int max_frames = -1;
+    std::vector<Tx> args;
+    cond<Tx, Tf> getcond = nullptr;
+    cond<Tx, Tf> breakcond = nullptr;
+};
+
+template<class Tx, class Tf>
 class ODE{
 
     static const std::unordered_map<std::string, stepfunc<Tx, Tf>> method_map;
@@ -80,21 +94,27 @@ class ODE{
         //constructor
         ODE(ode<Tx, Tf> ode = nullptr);
 
-        //dsolve methods
         const ode<Tx, Tf> odefunc() const;
 
-        const OdeResult<Tx, Tf> solve(const ICS<Tx, Tf>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr, const bool display = false) const;
+        const OdeResult<Tx, Tf> solve(const OdeArgs<Tx, Tf>&) const;
 
-        const vec::HeapArray<OdeResult<Tx, Tf>> solve_all(const vec::HeapArray<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method = "RK4", const int max_frames = -1, const vec::HeapArray<Tx>* args=nullptr, cond<Tx, Tf> getcond = nullptr, cond<Tx, Tf> breakcond = nullptr, int threads=-1) const;
+        const std::vector<OdeResult<Tx, Tf>> solve_all(const std::vector<OdeArgs<Tx, Tf>>&, int threads=-1) const;
 
     protected:
         ode<Tx, Tf> _ode;
 
-        //core algorithm
-        const OdeResult<Tx, Tf> _dsolve(const ICS<Tx, Tf>& ics, const Tx& x, Tx dx, stepfunc<Tx, Tf> update, const int lte, const Tx err, const int max_frames, const Tx* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const;
+};
+
+template<class Tx, class Tf>
+struct OdeSet{
+
+    ODE<Tx, Tf> ode;
+    OdeArgs<Tx, Tf> params;
 
 };
 
+template<class Tx, class Tf>
+std::vector<OdeResult<Tx, Tf>> dsolve_all(const std::vector<OdeSet<Tx, Tf>>& datam, int threads);
 
 
 /*
@@ -141,13 +161,13 @@ prec bisect_right(const Any& obj, const prec& a, const prec& b, const prec& tol)
 
 // DEFINE STEP FUNCTIONS
 template<class Tx, class Tf>
-Tf _euler(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
+Tf _euler(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args){
     return f + dx*ode(x, f, args);
 }
 
 
 template<class Tx, class Tf>
-Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
+Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args){
     Tf k1 = ode(x, f, args);
     Tf k2 = ode(x+dx/2, f+dx*k1/2, args);
     return f + dx*k2;
@@ -155,7 +175,7 @@ Tf _RK2(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args)
 
 
 template<class Tx, class Tf>
-Tf _RK4(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
+Tf _RK4(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args){
     Tf k1 = ode(x, f, args);
     Tf k2 = ode(x+dx/2, f+dx*k1/2, args);
     Tf k3 = ode(x+dx/2, f+dx*k2/2, args);
@@ -165,7 +185,7 @@ Tf _RK4(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args)
 
 
 template<class Tx, class Tf>
-Tf _RK7(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args) {
+Tf _RK7(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args) {
     Tf k1 = dx * ode(x, f, args);
     Tf k2 = dx * ode(x + dx / 12, f + k1 / 12, args);
     Tf k3 = dx * ode(x + dx / 12, f + (11 * k2 - 10 * k1) / 12, args);
@@ -180,7 +200,7 @@ Tf _RK7(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args)
 
 
 template<class Tx, class Tf>
-Tf _cromer(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
+Tf _cromer(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args){
 
     Tf fnew = f.empty_copy();
     size_t nd = f.size()/2;
@@ -199,7 +219,7 @@ Tf _cromer(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* ar
 
 
 template<class Tx, class Tf>
-Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const Tx* args){
+Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::vector<Tx>& args){
     
     Tf fnew = f.empty_copy();
     size_t nd = f.size()/2;
@@ -257,34 +277,39 @@ const ode<Tx, Tf> ODE<Tx, Tf>::odefunc() const {
 }
 
 template<class Tx, class Tf>
-const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const ICS<Tx, Tf>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method, const int max_frames, const vec::HeapArray<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const{
-    auto it = method_map.find(method);
-    if (it != method_map.end()) {
-        return _dsolve(ics, x, dx, it->second, lte_map.find(method)->second, err, max_frames, args->data(), getcond, breakcond, display);
-    } else {
-        throw std::runtime_error("Unknown ode method");
-    }
-}
+const std::vector<OdeResult<Tx, Tf>> ODE<Tx, Tf>::solve_all(const std::vector<OdeArgs<Tx, Tf>>& args, int threads) const{
 
-template<class Tx, class Tf>
-const vec::HeapArray<OdeResult<Tx, Tf>> ODE<Tx, Tf>::solve_all(const vec::HeapArray<ICS<Tx, Tf>>& ics, const Tx& x, const Tx& dx, const Tx& err, const char* method, const int max_frames, const vec::HeapArray<Tx>* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, int threads) const{
-    const size_t n = ics.size();
-    vec::HeapArray<OdeResult<Tx, Tf>> res(n, true);
-
-    threads = (threads == -1) ? omp_get_max_threads() : threads;
-    #pragma omp parallel for schedule(dynamic) num_threads(threads)
-    for (size_t i=0; i<n; i++){
-        res[i] = solve(ics[i], x, dx, err, method, max_frames, args, getcond, breakcond, false);
+    //define all sets of ode-args
+    std::vector<OdeSet<Tx, Tf>> data(args.size());
+    for (size_t i=0; i<args.size(); i++){
+        data[i] = {*this, args[i]};
     }
+
+    std::vector<OdeResult<Tx, Tf>> res = dsolve_all(data, threads);
 
     return res;
 }
 
 template<class Tx, class Tf>
-const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const ICS<Tx, Tf>& ics, const Tx& x, Tx dx, stepfunc<Tx, Tf> update, const int lte, const Tx err, const int max_frames, const Tx* args, cond<Tx, Tf> getcond, cond<Tx, Tf> breakcond, const bool display) const {
+const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const {
+    //extract data from args first
+    const ICS<Tx, Tf>& ics = params.ics;
+    const Tx& x = params.x;
+    Tx dx = params.dx;
+    const Tx& err = params.err;
+    const int& max_frames = params.max_frames;
+    const std::vector<Tx>& args = params.args;
+    const cond<Tx, Tf>& getcond = params.getcond;
+    const cond<Tx, Tf>& breakcond = params.breakcond;
+    const int lte = lte_map.find(params.method)->second;
+    auto it = method_map.find(params.method);
+    if (it == method_map.end()) {
+        throw std::runtime_error("Unknown ode method");
+    }
+    stepfunc<Tx, Tf> update = it->second;
+    
     const int _dir = vec::sign(dx);
     const Tx _pow = Tx(1)/lte;
-    const Tx TWO(2);
     const Tx POINT_NINE = Tx(9)/10;
     const Tx& _x0 = ics.x0;
     const Tf& _f0 = ics.f0;
@@ -321,7 +346,7 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const ICS<Tx, Tf>& ics, const Tx& x
     while (!ready){
         
         //determine step size
-        rel_err = TWO*err;
+        rel_err = 2*err;
         while (rel_err > err){
             f_single = update(_ode, xi, fi, dx, args);
             f_half = update(_ode, xi, fi, dx/2, args);
@@ -397,6 +422,19 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::_dsolve(const ICS<Tx, Tf>& ics, const Tx& x
     return res;
 }
 
+template<class Tx, class Tf>
+std::vector<OdeResult<Tx, Tf>> dsolve_all(const std::vector<OdeSet<Tx, Tf>>& data, int threads){
+    const size_t n = data.size();
+    std::vector<OdeResult<Tx, Tf>> res(n);
+
+    threads = (threads == -1) ? omp_get_max_threads() : threads;
+    #pragma omp parallel for schedule(dynamic) num_threads(threads)
+    for (size_t i=0; i<n; i++){
+        res[i] = data[i].ode.solve(data[i].params);
+    }
+
+    return res;
+}
 
 
 #endif

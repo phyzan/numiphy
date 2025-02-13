@@ -44,7 +44,7 @@ class CodeGenerator:
                 else:
                     args = f'const double& t, const double& q'
                     
-                args += f', const double* args'
+                args += f', const std::vector<double>& args'
             else:
                 args = ', '.join([f"double {v}" for v in self.symbols+list(self.args)])
         return args

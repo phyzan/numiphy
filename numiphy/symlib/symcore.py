@@ -1032,6 +1032,10 @@ class _Complex(_Number):
 
     def __init__(self, real: int|float, imag: int|float):
         assert isinstance(real, (int, float)) and isinstance(imag, (int, float))
+        if int(real) == real:
+            real = int(real)
+        if int(imag) == imag:
+            imag = int(imag)
         self.Args = (real, imag)
 
     @property

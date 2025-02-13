@@ -29,3 +29,6 @@ class Real(Expr, _Real):
 
 class Imag(Expr, _Imag):
     pass
+
+def sqrt(x):
+    return x ** Rational(1, 2)

@@ -236,7 +236,7 @@ class _Real(_Mathfunc):
             else:
                 return f'{self.__class__.__name__}({self.Arg.repr(lang, lib)})'
         elif lang == 'c++':
-            return f'({self.Arg.repr(lang, lib)}).real()'
+            return f'{lib}::real({self.Arg.repr(lang, lib)})'
         
     def _diff(self, var):
         return self.init(self.Arg._diff(var))
@@ -270,7 +270,7 @@ class _Imag(_Mathfunc):
             else:
                 return f'{self.__class__.__name__}({self.Arg.repr(lang, lib)})'
         elif lang == 'c++':
-            return f'({self.Arg.repr(lang, lib)}).imag()'
+            return f'{lib}::imag({self.Arg.repr(lang, lib)})'
         
     def _diff(self, var):
         return self.init(self.Arg._diff(var))

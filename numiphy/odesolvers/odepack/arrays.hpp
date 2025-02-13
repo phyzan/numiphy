@@ -82,6 +82,8 @@ class HeapArray{
 
         const T* data() const;
 
+        std::vector<T> to_vector() const;
+
         template<class R, size_t n>
         friend HeapArray<R, n> _operation(const HeapArray<R, n>&, const R&, R (*oper)(const R&, const R&));
 
@@ -157,6 +159,8 @@ class StackArray{
         void show() const;
 
         const T* data() const;
+
+        std::vector<T> to_vector() const;
 
         template<class R, size_t n>
         friend StackArray<R, n> _operation(const StackArray<R, n>&, const R&, R (*oper)(const R&, const R&));
@@ -666,7 +670,14 @@ const T* HeapArray<T, N>::data() const{
     return _arr;
 }
 
-
+template<class T, size_t N>
+std::vector<T> HeapArray<T, N>::to_vector() const{
+    std::vector<T> res(_size);
+    for (size_t i=0; i<_size; i++){
+        res[i] = _arr[i];
+    }
+    return res;
+}
 
 
 
@@ -773,6 +784,15 @@ void StackArray<T, n>::show() const{
 template<class T, size_t n>
 const T* StackArray<T, n>::data() const{
     return _arr;
+}
+
+template<class T, size_t N>
+std::vector<T> StackArray<T, N>::to_vector() const{
+    std::vector<T> res(_size);
+    for (size_t i=0; i<_size; i++){
+        res[i] = _arr[i];
+    }
+    return res;
 }
 
 

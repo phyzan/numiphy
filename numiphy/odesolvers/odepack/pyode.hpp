@@ -20,18 +20,6 @@
 namespace py = pybind11;
 
 
-double toCPP_Array(const py::float_& a);
-
-template<class ArrayType>
-ArrayType toCPP_Array(const py::array& A);
-
-template<class T, size_t N, template<class, size_t> class ArrayType>
-py::array_t<T> to_numpy(const ArrayType<T, N>&, const std::vector<size_t>&);
-
-template<class T, size_t N1, size_t N2, template<class, size_t> class Tfall, template<class, size_t> class Tf>
-vec::HeapArray<T> flatten(const Tfall<Tf<T, N1>, N2>&);
-
-
 #pragma GCC visibility push(hidden)
 template<class T>
 struct PyOdeResult{
@@ -44,7 +32,22 @@ struct PyOdeResult{
 };
 #pragma GCC visibility pop
 
+#pragma GCC visibility push(hidden)
+template<class T>
+struct PyOdeArgs{
 
+    py::tuple ics;
+    T x;
+    T dx;
+    T err;
+    py::str method;
+    int max_frames;
+    py::tuple pyargs;
+    py::object getcond;
+    py::object breakcond;
+
+};
+#pragma GCC visibility pop
 
 #pragma GCC visibility push(hidden)
 template<class Tx, class Tf>
@@ -53,16 +56,41 @@ class PyOde : public ODE<Tx, Tf>{
     public:
         PyOde(ode<Tx, Tf> df): ODE<Tx, Tf>(df) {}
 
-        const PyOdeResult<Tx> pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, py::str method = py::str("method"), const int max_frames=-1, py::tuple pyargs = py::tuple(),  py::object getcond = py::none(),  py::object breakcond = py::none(), const bool display=false) const;
+        const PyOdeResult<Tx> pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, const py::str& method, const int& max_frames, const py::tuple& pyargs, const py::object& getcond, const py::object& breakcond) const;
         
-        py::list pysolve_all(py::list& ics, const Tx& x, const Tx& dx, const Tx& err, py::str method = py::str("RK4"), const int& max_frames = -1, py::tuple pyargs = py::tuple(), int threads=-1) const;
+        py::list pysolve_all(const py::list&, int threads) const;
 
         PyOde<Tx, Tf> copy() const;
+
+        static py::list py_dsolve_all(const py::list& data, int threads);
 
 };
 
 #pragma GCC visibility pop
 
+#pragma GCC visibility push(hidden)
+template<class Tx, class Tf>
+struct PyOdeSet{
+
+    PyOde<Tx, Tf> ode;
+    PyOdeArgs<Tx> params;
+
+};
+#pragma GCC visibility pop
+
+double toCPP_Array(const py::float_& a);
+
+template<class ArrayType>
+ArrayType toCPP_Array(const py::array& A);
+
+template<class T, size_t N, template<class, size_t> class ArrayType>
+py::array_t<T> to_numpy(const ArrayType<T, N>&, const std::vector<size_t>&);
+
+template<class T, size_t N1, size_t N2, template<class, size_t> class Tfall, template<class, size_t> class Tf>
+vec::HeapArray<T> flatten(const Tfall<Tf<T, N1>, N2>&);
+
+template<class Tx, class Tf>
+OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams);
 
 /*
 ------------------------------------------------------------------------------------
@@ -110,41 +138,52 @@ vec::HeapArray<T> flatten(const Tfall<Tf<T, N1>, N2>& f){
     return res;
 }
 
-
 template<class Tx, class Tf>
-const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& py_ics, const Tx& x, const Tx& dx, const Tx& err, py::str method, const int max_frames, py::tuple pyargs,  py::object getcond, py::object breakcond, const bool display) const {
+OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
+    ICS<Tx, Tf> ics = {pyparams.ics[0].template cast<Tx>(), toCPP_Array<Tf>(pyparams.ics[1])};
+    Tx x = pyparams.x;
+    Tx dx = pyparams.dx;
+    Tx err = pyparams.err;
+    std::string method = pyparams.method.template cast<std::string>();
+    int max_frames = pyparams.max_frames;
+    std::vector<Tx> args;
+    cond<Tx, Tf> getcond = nullptr;
+    cond<Tx, Tf> breakcond = nullptr;
 
-    cond<Tx, Tf> wrapped_getcond = nullptr;
-    cond<Tx, Tf> wrapped_breakcond = nullptr;
-    vec::HeapArray<Tx> args;
-    Tx x0;
-    ICS<Tx, Tf> ics;
-    size_t nd, nt;
+    if (!pyparams.pyargs.empty()){
+        args = toCPP_Array<vec::HeapArray<Tx>>(pyparams.pyargs).to_vector();
+    }
 
-    if (!getcond.is(py::none())) {
-        wrapped_getcond = [getcond](const Tx& x1, const Tx& x2, const Tf& f1, const Tf& f2) -> bool {
-            bool res = getcond(x1, x2, to_numpy(f1, {f1.size()}), to_numpy(f2, {f2.size()})).equal(py::bool_(true));
+    if (!pyparams.getcond.is(py::none())) {
+        getcond = [pyparams](const Tx& x1, const Tx& x2, const Tf& f1, const Tf& f2) -> bool {
+            bool res = pyparams.getcond(x1, x2, to_numpy(f1, {f1.size()}), to_numpy(f2, {f2.size()})).equal(py::bool_(true));
             return res;
         };
     }
     
-    if (!breakcond.is(py::none())) {
-        wrapped_breakcond = [breakcond](const Tx& x1, const Tx& x2, const Tf& f1, const Tf& f2) -> bool {
-            return breakcond(x1, x2, to_numpy(f1, {f1.size()}), to_numpy(f2, {f2.size()})).equal(py::bool_(true));
+    if (!pyparams.breakcond.is(py::none())) {
+        breakcond = [pyparams](const Tx& x1, const Tx& x2, const Tf& f1, const Tf& f2) -> bool {
+            bool res = pyparams.breakcond(x1, x2, to_numpy(f1, {f1.size()}), to_numpy(f2, {f2.size()})).equal(py::bool_(true));
+            return res;
         };
     }
 
-    if (!pyargs.empty()){
-        args = toCPP_Array<vec::HeapArray<Tx>>(pyargs);
-    }
-    x0 = py_ics[0].cast<Tx>();
-    Tf f0 = toCPP_Array<Tf>(py_ics[1]);
-    ics = {x0, f0};
+    OdeArgs<Tx, Tf> res = {ics, x, dx, err, method, max_frames, args, getcond, breakcond};
+    return res;
+    
+}
 
-    OdeResult<Tx, Tf> res = ODE<Tx, Tf>::solve(ics, x, dx, err, method.cast<std::string>().c_str(), max_frames, &args, wrapped_getcond, wrapped_breakcond, display);
+
+template<class Tx, class Tf>
+const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, const py::str& method, const int& max_frames, const py::tuple& pyargs, const py::object& getcond, const py::object& breakcond) const {
+
+    const PyOdeArgs<Tx> pyparams = {ics, x, dx, err, method, max_frames, pyargs, getcond, breakcond};
+    OdeArgs<Tx, Tf> ode_args = to_OdeArgs<Tx, Tf>(pyparams);
+
+    OdeResult<Tx, Tf> res = ODE<Tx, Tf>::solve(ode_args);
     vec::HeapArray<Tx> f_flat = flatten(res.f);
-    nd = res.f[0].size();
-    nt = res.f.size();
+    size_t nd = res.f[0].size();
+    size_t nt = res.f.size();
 
     PyOdeResult<Tx> odres{res.x, f_flat, to_numpy(res.x, {nt}), to_numpy(f_flat, {nt, nd}), res.diverges, res.runtime};
 
@@ -153,44 +192,55 @@ const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& py_ics, const Tx& 
 
 
 template<class Tx, class Tf>
-py::list PyOde<Tx, Tf>::pysolve_all(py::list& py_ics, const Tx& x, const Tx& dx, const Tx& err, py::str method, const int& max_frames, py::tuple pyargs, int threads) const{
+py::list PyOde<Tx, Tf>::pysolve_all(const py::list& pyparams, int threads) const{
 
-    size_t n = py_ics.size();
-    size_t nd, nt;
-    vec::HeapArray<ICS<Tx, Tf>> ics(n, true);
-    vec::HeapArray<Tx> args(pyargs.size(), true);
-    std::string str_method = method.cast<std::string>();
-    vec::HeapArray<OdeResult<Tx, Tf>> ode_res;
-    py::list res;
-
-
-    //cast py_ics to cpp ics
-    for (size_t i=0; i<n; i++){
-        py::tuple _ics = py_ics[i];
-        ics[i] = {_ics[0].cast<double>(), toCPP_Array<Tf>(_ics[1])};
-        res.append(py::none());
+    py::list data;
+    size_t n = pyparams.size();
+    for (size_t i = 0; i < n; i++){
+        data.append(py::make_tuple(*this, pyparams[i]));
     }
-
-    //cast py_args to cpp args
-    for (size_t i=0; i<args.size(); i++){
-        args[i] = pyargs[i].cast<double>();
-    }
-
-    //retrieve array of results from base class method
-
-    ode_res = ODE<Tx, Tf>::solve_all(ics, x, dx, err, str_method.c_str(), max_frames, &args, nullptr, nullptr, threads);
-    //convert results to python type
-    for (size_t i=0; i<n; i++){
-        // OdeResult<Tx, Tf>& r = ode_res[i];
-        nd = ode_res[i].f[0].size();
-        nt = ode_res[i].f.size();
-        vec::HeapArray<Tx> f_flat = flatten(ode_res[i].f);
-        res[i] = PyOdeResult<Tx>({ode_res[i].x, f_flat, to_numpy(ode_res[i].x, {nt}), to_numpy(f_flat, {nt, nd}), ode_res[i].diverges, ode_res[i].runtime});
-    }
-
+    
+    py::list res = py_dsolve_all(data, threads);
 
     return res;
 
+}
+
+template<class Tx, class Tf>
+py::list PyOde<Tx, Tf>::py_dsolve_all(const py::list& data, int threads){
+    
+    size_t n = data.size();
+    size_t nd, nt;
+    std::vector<OdeSet<Tx, Tf>> odeset(n);
+    std::vector<OdeResult<Tx, Tf>> ode_res;
+    py::list res;
+
+    //cast py_params to cpp params
+    py::tuple tup;
+    py::dict kw;
+    py::list pyparams;
+    for (size_t i=0; i<n; i++){
+        tup = data[i].cast<py::tuple>();
+        kw = tup[1].cast<py::dict>();
+        
+        PyOdeArgs<Tx> pystruct = {kw["ics"], kw["t"].cast<Tx>(), kw["dt"].cast<Tx>(), kw["err"].cast<Tx>(), kw["method"], kw["max_frames"].cast<int>(), kw["args"], py::none(), py::none()};
+        odeset[i] = { tup[0].cast<PyOde<Tx, Tf>>(), to_OdeArgs<Tx, Tf>(pystruct)};
+        if (kw.size() > 7){
+            throw std::runtime_error("When solving an ode in parallel, no more than 7 arguments can be passed in the ode, since the rest of them would be cast into python functions.GIL prevents the program to call python function in parallel");
+        }
+    }
+
+    //retrieve array of results from base class method
+    ode_res = dsolve_all(odeset, threads);
+    //convert results to python type
+    for (size_t i=0; i<n; i++){
+        nd = ode_res[i].f[0].size();
+        nt = ode_res[i].f.size();
+        vec::HeapArray<Tx> f_flat = flatten(ode_res[i].f);
+        res.append(PyOdeResult<Tx>({ode_res[i].x, f_flat, to_numpy(ode_res[i].x, {nt}), to_numpy(f_flat, {nt, nd}), ode_res[i].diverges, ode_res[i].runtime}));
+    }
+    
+    return res;
 }
 
 
@@ -214,19 +264,14 @@ void define_ode_module(py::module& m, ode<Tx, Tf> func_ptr) {
             py::arg("max_frames") = -1,
             py::arg("args") = py::tuple(),
             py::arg("getcond") = py::none(),
-            py::arg("breakcond") = py::none(),
-            py::arg("display") = false)
+            py::arg("breakcond") = py::none())
         .def("solve_all", &PyOde<Tx, Tf>::pysolve_all,
-            py::arg("ics"),
-            py::arg("t"),
-            py::arg("dt"),
-            py::kw_only(),
-            py::arg("err") = 0.,
-            py::arg("method") = py::str("RK4"),
-            py::arg("max_frames") = -1,
-            py::arg("args") = py::tuple(),
+            py::arg("params"),
             py::arg("threads") = -1)
-        .def("copy", &PyOde<Tx, Tf>::copy);
+        .def("copy", &PyOde<Tx, Tf>::copy)
+        .def_static("dsolve_all", &PyOde<Tx, Tf>::py_dsolve_all,
+            py::arg("data"),
+            py::arg("threads") = -1);
 
 
     py::class_<PyOdeResult<Tx>>(m, "OdeResult", py::module_local())
