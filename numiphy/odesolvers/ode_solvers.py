@@ -199,7 +199,7 @@ class PythonicODE(ODE):
     def copy(self):
         return PythonicODE(self.df)
 
-    def custom_solver(self, ics, t, dt, update, lte, args=(), getcond=None, breakcond = None, err = 0., max_frames = -1, display = False, mask = None, thres = 1e-30, checknan=True):
+    def custom_solver(self, ics, t, dt, update, lte, args=(), getcond=None, breakcond = None, err = 0., cutoff_step=0., max_frames = -1, display = False, mask = None, thres = 1e-30, checknan=True):
         '''
         This is the core algorithm that solves a system of ode's using any available method.
         It is an internal function and should not be called by the user yet. It will be easy to
@@ -222,6 +222,8 @@ class PythonicODE(ODE):
         k = 1
         _dir = np.sign(dt)
         diverges = False
+        is_stiff = False
+
 
         t1 = time.time()
         with np.errstate(all='ignore'):
@@ -241,6 +243,9 @@ class PythonicODE(ODE):
                             rel_err = np.max(errs)
                             if rel_err > 0:
                                 dt = 0.9* dt * (err/rel_err)**pow
+                                if abs(dt)< cutoff_step:
+                                    is_stiff=True
+                                    break
                             else:
                                 break
                         else:
@@ -249,6 +254,11 @@ class PythonicODE(ODE):
                         rel_err = np.max(np.abs((f_single - f_double)/np.abs(f_double)))
                         if rel_err != 0:
                             dt = 0.9* dt * (err/rel_err)**pow
+                            if abs(dt)< cutoff_step:
+                                is_stiff=True
+                                break
+                if is_stiff:
+                    break
                 if (ti+dt)*_dir > t*_dir:
                     dt = t - ti
                 #step size determined
@@ -288,7 +298,7 @@ class PythonicODE(ODE):
         t2 = time.time()
         x_arr, f_arr = np.array(x_arr), np.array(f_arr)
 
-        return OdeResult(x_arr, f_arr, t2-t1, diverges)
+        return OdeResult(x_arr, f_arr, diverges, is_stiff, t2-t1)
 
     def _get_step(self, update, cond, f1, ti, dt, args):
         def h(t):
@@ -576,8 +586,8 @@ class SymbolicOde:
 
 class OdeResult:
 
-    def __init__(self, var_arr, f_arr, diverges, runtime):
-        self.__args = (np.asarray(var_arr), np.asarray(f_arr), diverges, runtime)
+    def __init__(self, var_arr, f_arr, diverges, is_stiff, runtime):
+        self.__args = (np.asarray(var_arr), np.asarray(f_arr), diverges, is_stiff, runtime)
 
     @property
     def var(self)->np.ndarray:
@@ -588,12 +598,16 @@ class OdeResult:
         return self.__args[1]
 
     @property
-    def runtime(self)->float:
+    def diverges(self)->bool:
         return self.__args[2]
 
     @property
-    def diverges(self)->bool:
+    def is_stiff(self)->bool:
         return self.__args[3]
+
+    @property
+    def runtime(self)->float:
+        return self.__args[4]
 
 
 class Base:
@@ -951,9 +965,8 @@ class HamiltonianSystem:
 def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, method='RK4', max_frames=-1, args=(), threads=-1)->list[OdeResult]:
 
     cls = [orb.ode.__class__ for orb in orbits]
-    if not all([cls_i is cls[0] for cls_i in cls]) or not hasattr(cls[0], 'dsolve_all'):
-        print(cls[0].__class__.__name__)
-        raise ValueError("All orbits passed in the parallel integrator must originate from a copy of the same orbit or from the same compiled module")
+    if not hasattr(cls[0], 'dsolve_all'):
+        raise ValueError("All orbits passed in the parallel integrator must have a 'LowLevelODE' ode ")
     ode_data = []
     for orb in orbits:
         ics = orb.current_ics()
@@ -967,3 +980,4 @@ def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, method='RK4', max_
         orbits[i]._absorb_oderes(res[i])
     
     return res
+

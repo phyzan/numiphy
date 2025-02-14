@@ -28,6 +28,7 @@ struct PyOdeResult{
     py::array_t<T> x;
     py::array_t<T> f;
     bool diverges;
+    bool is_stiff;
     long double runtime;
 };
 #pragma GCC visibility pop
@@ -40,6 +41,7 @@ struct PyOdeArgs{
     T x;
     T dx;
     T err;
+    T cutoff_step;
     py::str method;
     int max_frames;
     py::tuple pyargs;
@@ -56,7 +58,7 @@ class PyOde : public ODE<Tx, Tf>{
     public:
         PyOde(ode<Tx, Tf> df): ODE<Tx, Tf>(df) {}
 
-        const PyOdeResult<Tx> pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, const py::str& method, const int& max_frames, const py::tuple& pyargs, const py::object& getcond, const py::object& breakcond) const;
+        const PyOdeResult<Tx> pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, const Tx& cutoff_step, const py::str& method, const int& max_frames, const py::tuple& pyargs, const py::object& getcond, const py::object& breakcond) const;
         
         py::list pysolve_all(const py::list&, int threads) const;
 
@@ -144,6 +146,7 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
     Tx x = pyparams.x;
     Tx dx = pyparams.dx;
     Tx err = pyparams.err;
+    Tx cutoff_step = pyparams.cutoff_step;
     std::string method = pyparams.method.template cast<std::string>();
     int max_frames = pyparams.max_frames;
     std::vector<Tx> args;
@@ -168,16 +171,16 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
         };
     }
 
-    OdeArgs<Tx, Tf> res = {ics, x, dx, err, method, max_frames, args, getcond, breakcond};
+    OdeArgs<Tx, Tf> res = {ics, x, dx, err, cutoff_step, method, max_frames, args, getcond, breakcond};
     return res;
     
 }
 
 
 template<class Tx, class Tf>
-const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, const py::str& method, const int& max_frames, const py::tuple& pyargs, const py::object& getcond, const py::object& breakcond) const {
+const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& ics, const Tx& x, const Tx& dx, const Tx& err, const Tx& cutoff_step, const py::str& method, const int& max_frames, const py::tuple& pyargs, const py::object& getcond, const py::object& breakcond) const {
 
-    const PyOdeArgs<Tx> pyparams = {ics, x, dx, err, method, max_frames, pyargs, getcond, breakcond};
+    const PyOdeArgs<Tx> pyparams = {ics, x, dx, err, cutoff_step, method, max_frames, pyargs, getcond, breakcond};
     OdeArgs<Tx, Tf> ode_args = to_OdeArgs<Tx, Tf>(pyparams);
 
     OdeResult<Tx, Tf> res = ODE<Tx, Tf>::solve(ode_args);
@@ -185,7 +188,7 @@ const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& ics, const Tx& x, 
     size_t nd = res.f[0].size();
     size_t nt = res.f.size();
 
-    PyOdeResult<Tx> odres{res.x, f_flat, to_numpy(res.x, {nt}), to_numpy(f_flat, {nt, nd}), res.diverges, res.runtime};
+    PyOdeResult<Tx> odres{res.x, f_flat, to_numpy(res.x, {nt}), to_numpy(f_flat, {nt, nd}), res.diverges, res.is_stiff, res.runtime};
 
     return odres;
 }
@@ -223,9 +226,9 @@ py::list PyOde<Tx, Tf>::py_dsolve_all(const py::list& data, int threads){
         tup = data[i].cast<py::tuple>();
         kw = tup[1].cast<py::dict>();
         
-        PyOdeArgs<Tx> pystruct = {kw["ics"], kw["t"].cast<Tx>(), kw["dt"].cast<Tx>(), kw["err"].cast<Tx>(), kw["method"], kw["max_frames"].cast<int>(), kw["args"], py::none(), py::none()};
+        PyOdeArgs<Tx> pystruct = {kw["ics"], kw["t"].cast<Tx>(), kw["dt"].cast<Tx>(), kw["err"].cast<Tx>(), kw["cutoff_step"].cast<Tx>(), kw["method"], kw["max_frames"].cast<int>(), kw["args"], py::none(), py::none()};
         odeset[i] = { tup[0].cast<PyOde<Tx, Tf>>(), to_OdeArgs<Tx, Tf>(pystruct)};
-        if (kw.size() > 7){
+        if (kw.size() > 8){
             throw std::runtime_error("When solving an ode in parallel, no more than 7 arguments can be passed in the ode, since the rest of them would be cast into python functions.GIL prevents the program to call python function in parallel");
         }
     }
@@ -237,7 +240,7 @@ py::list PyOde<Tx, Tf>::py_dsolve_all(const py::list& data, int threads){
         nd = ode_res[i].f[0].size();
         nt = ode_res[i].f.size();
         vec::HeapArray<Tx> f_flat = flatten(ode_res[i].f);
-        res.append(PyOdeResult<Tx>({ode_res[i].x, f_flat, to_numpy(ode_res[i].x, {nt}), to_numpy(f_flat, {nt, nd}), ode_res[i].diverges, ode_res[i].runtime}));
+        res.append(PyOdeResult<Tx>({ode_res[i].x, f_flat, to_numpy(ode_res[i].x, {nt}), to_numpy(f_flat, {nt, nd}), ode_res[i].diverges, ode_res[i].is_stiff, ode_res[i].runtime}));
     }
     
     return res;
@@ -260,6 +263,7 @@ void define_ode_module(py::module& m, ode<Tx, Tf> func_ptr) {
             py::arg("dt"),
             py::kw_only(),
             py::arg("err") = 0.,
+            py::arg("cutoff_step") = 0.,
             py::arg("method") = py::str("RK4"),
             py::arg("max_frames") = -1,
             py::arg("args") = py::tuple(),
@@ -275,10 +279,11 @@ void define_ode_module(py::module& m, ode<Tx, Tf> func_ptr) {
 
 
     py::class_<PyOdeResult<Tx>>(m, "OdeResult", py::module_local())
-        .def_readwrite("var", &PyOdeResult<Tx>::x)
-        .def_readwrite("func", &PyOdeResult<Tx>::f)
-        .def_readwrite("runtime", &PyOdeResult<Tx>::runtime)
-        .def_readwrite("diverges", &PyOdeResult<Tx>::diverges);
+        .def_readonly("var", &PyOdeResult<Tx>::x)
+        .def_readonly("func", &PyOdeResult<Tx>::f)
+        .def_readonly("diverges", &PyOdeResult<Tx>::diverges)
+        .def_readonly("is_stiff", &PyOdeResult<Tx>::is_stiff)
+        .def_readonly("runtime", &PyOdeResult<Tx>::runtime);
 
     m.def("ode", [func_ptr]() {
         return PyOde<Tx, Tf>(func_ptr);

@@ -42,8 +42,9 @@ struct OdeResult{
 
     vec::HeapArray<Tx> x;
     vec::HeapArray<Tf> f;
-    long double runtime;
     bool diverges;
+    bool is_stiff;
+    long double runtime;
 };
 
 
@@ -76,6 +77,7 @@ struct OdeArgs{
     Tx x;
     Tx dx;
     Tx err = 1e-8;
+    Tx cutoff_step = 0.;
     std::string method = "RK4";
     int max_frames = -1;
     std::vector<Tx> args;
@@ -297,6 +299,7 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const 
     const Tx& x = params.x;
     Tx dx = params.dx;
     const Tx& err = params.err;
+    const Tx& cutoff_step = params.cutoff_step;
     const int& max_frames = params.max_frames;
     const std::vector<Tx>& args = params.args;
     const cond<Tx, Tf>& getcond = params.getcond;
@@ -317,6 +320,7 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const 
     bool ready = false;
     bool capture = false;
     bool diverges = false;
+    bool is_stiff = false;
     int k = 1;
 
     Tx xi = _x0;
@@ -361,12 +365,19 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const 
 
             if (rel_err != 0.){
                 dx = POINT_NINE*dx*pow(err/rel_err, _pow); //TODO for e.g. mpfr, the mpfr::pow must be invoked
+                if (dx < cutoff_step){
+                    is_stiff = true;
+                    break;
+                }
             }
             else{
                 break;
             }
         }
-        if ((xi+dx)*_dir > x*_dir){
+        if (is_stiff){
+            break;
+        }
+        else if ((xi+dx)*_dir > x*_dir){
             dx = x-xi;
             ready=true;
         }//step size determined
@@ -416,8 +427,8 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const 
     }
     auto t2 = std::chrono::high_resolution_clock::now();
 
-    std::chrono::duration<double> time = t2-t1;
-    OdeResult<Tx, Tf> res{x_arr, f_arr, time.count(), diverges};
+    std::chrono::duration<long double> time = t2-t1;
+    OdeResult<Tx, Tf> res{x_arr, f_arr, diverges, is_stiff, time.count()};
 
     return res;
 }
