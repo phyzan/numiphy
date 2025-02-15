@@ -365,7 +365,7 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const 
 
             if (rel_err != 0.){
                 dx = POINT_NINE*dx*pow(err/rel_err, _pow); //TODO for e.g. mpfr, the mpfr::pow must be invoked
-                if (dx < cutoff_step){
+                if (dx * _dir < cutoff_step * _dir){
                     is_stiff = true;
                     break;
                 }
