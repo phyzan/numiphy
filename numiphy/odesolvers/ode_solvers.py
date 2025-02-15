@@ -298,7 +298,7 @@ class PythonicODE(ODE):
         t2 = time.time()
         x_arr, f_arr = np.array(x_arr), np.array(f_arr)
 
-        return OdeResult(x_arr, f_arr, diverges, is_stiff, t2-t1)
+        return OdeResult(var_arr=x_arr, f_arr=f_arr, diverges=diverges, is_stiff=is_stiff, runtime=t2-t1)
 
     def _get_step(self, update, cond, f1, ti, dt, args):
         def h(t):
@@ -584,30 +584,7 @@ class SymbolicOde:
         return self._to_lowlevel(stack=True, variational=True)
 
 
-class OdeResult:
 
-    def __init__(self, var_arr, f_arr, diverges, is_stiff, runtime):
-        self.__args = (np.asarray(var_arr), np.asarray(f_arr), diverges, is_stiff, runtime)
-
-    @property
-    def var(self)->np.ndarray:
-        return self.__args[0]
-    
-    @property
-    def func(self)->np.ndarray:
-        return self.__args[1]
-
-    @property
-    def diverges(self)->bool:
-        return self.__args[2]
-
-    @property
-    def is_stiff(self)->bool:
-        return self.__args[3]
-
-    @property
-    def runtime(self)->float:
-        return self.__args[4]
 
 
 class Base:
@@ -645,23 +622,33 @@ class Base:
                 else:
                     self._args[key] = value
 
+class OdeResult(Base):
+
+    var: np.ndarray
+    func: np.ndarray
+    diverges: bool
+    is_stiff: bool
+    runtime: float
+
+    def __init__(self, var_arr, f_arr, diverges, is_stiff, runtime):
+        Base.__init__(self, var=np.asarray(var_arr), func=np.asarray(f_arr), diverges=diverges, is_stiff=is_stiff, runtime=runtime)
+    
+
 class Orbit(Base):
 
-    symbolic_ode: SymbolicOde
     ode: ODE
     data: np.ndarray
     diverges: bool
-    is_lowlevel: bool
-    occupies_stack: bool
+    is_stiff: bool
     
     def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
-        self._init(ode, lowlevel=lowlevel, stack=stack, variational=False)
+        Orbit._init(self, ode, lowlevel=lowlevel, stack=stack)
 
-    def _init(self, ode: SymbolicOde, lowlevel: bool, stack: bool, variational: bool, **kwargs):
-        _ode = ode.ode(lowlevel=lowlevel, stack=stack, variational=variational)
+    def _init(self, ode: SymbolicOde, lowlevel: bool, stack: bool, **kwargs):
+        _ode = ode.ode(lowlevel=lowlevel, stack=stack, variational=self.is_variational)
         
-        nsys = 2*ode.Nsys if variational else ode.Nsys
-        Base.__init__(self, symbolic_ode=ode, ode=_ode, data=np.empty((0, nsys+1), dtype=np.float64), diverges=False, is_lowlevel=lowlevel, occupies_stack=stack and lowlevel, **kwargs)
+        nsys = 2*ode.Nsys if self.is_variational else ode.Nsys
+        Base.__init__(self, ode=_ode, data=np.empty((0, nsys+1), dtype=np.float64), diverges=False, is_stiff=False, **kwargs)
     
     @property
     def dof(self)->int:
@@ -679,11 +666,8 @@ class Orbit(Base):
     def is_variational(self):
         return isinstance(self, VariationalOrbit)
 
-    def copy(self):
-        return self.__class__(self.symbolic_ode, self.is_lowlevel, self.occupies_stack)
-
     def clear(self):
-        self._set(data=self._empty(), diverges=False)
+        self._set(data=self._empty(), diverges=False, is_stiff=False)
 
     def reset(self):
         if self.data.shape[0] > 0:
@@ -699,8 +683,8 @@ class Orbit(Base):
         return self._parse_ics((self.data[-1, 0], self.data[-1, 1:]))
 
     def integrate(self, Delta_t, dt, func = "solve", **kwargs):
-        if self.diverges:
-            print('Cannot integrate, orbit diverges')
+        if self.diverges or self.is_stiff:
+            return OdeResult(self.t[-1:], self.f[-1:, :], diverges=self.diverges, is_stiff=self.is_stiff)
         elif Delta_t<0 or dt<0:
             raise ValueError('Invalid Delta_t or dt inserted')
         elif Delta_t < dt:
@@ -722,7 +706,7 @@ class Orbit(Base):
         
         newdata = np.column_stack((tarr, farr))
         data = np.concatenate((self.data, newdata[1:]))
-        self._set(data=data)
+        self._set(data=data, diverges=res.diverges, is_stiff=res.is_stiff)
         return res
 
     def _empty(self):
@@ -732,7 +716,7 @@ class Orbit(Base):
         data = np.array([[t0, *f0]], dtype=np.float64)
         if data.shape != (1, self.dof+1):
             raise ValueError(f"The provided initial conditions have data shape {data.shape} instead of {(1, self.dof+1)}")
-        self._set(data=data, diverges=False)
+        self._set(data=data, diverges=False, is_stiff=False)
 
 
 class VariationalOrbit(Orbit):
@@ -740,7 +724,7 @@ class VariationalOrbit(Orbit):
     _logksi: list[float]
 
     def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
-        self._init(ode, lowlevel=lowlevel, stack=stack, _logksi=[])
+        VariationalOrbit._init(self, ode, lowlevel=lowlevel, stack=stack, _logksi=[])
 
     @property
     def q(self):
@@ -807,21 +791,19 @@ class VariationalOrbit(Orbit):
 
 class HamiltonianOrbit(Orbit):
 
-    hs: HamiltonianSystem
-
     def __init__(self, potential: sym.Expr, variables: tuple[sym.Variable, ...], args: tuple[sym.Variable, ...] = (), lowlevel=True, stack=True):
         HamiltonianOrbit._init(self, potential=potential, variables=variables, args=args, lowlevel=lowlevel, stack=stack)
     
     def _init(self, potential: sym.Expr, variables: tuple[sym.Variable, ...], args: tuple[sym.Variable, ...], lowlevel: bool, stack: bool, **kwargs):
         hs = HamiltonianSystem(potential, *variables, args=args)
-        for v in hs.variables:
-            if len(v.name) != 1 or v.name == 't':
-                raise ValueError("All variables in the dynamical system need to have exactly one letter, and different from 't'") 
-        return Orbit._init(self, hs.symbolic_ode, lowlevel, stack, variational=self.is_variational, hs=hs, **kwargs)
-    
+        return Orbit._init(self, hs.symbolic_ode, lowlevel, stack, **kwargs)
+
     @property
     def nd(self):
-        return self.symbolic_ode.Nsys
+        if self.is_variational:
+            return self.dof//4
+        else:
+            return self.dof//2
 
     @property
     def x(self):
@@ -830,9 +812,6 @@ class HamiltonianOrbit(Orbit):
     @property
     def p(self):
         return self.data[:, 1+self.nd:1+2*self.nd].transpose()
-
-    def copy(self):
-        return self.__class__(self.hs.V, self.hs.variables, self.hs.extras, self.is_lowlevel, self.occupies_stack)
 
 
 class VariationalHamiltonianOrbit(VariationalOrbit, HamiltonianOrbit):
@@ -856,7 +835,10 @@ class FlowOrbit(Orbit):
 
     @property
     def nd(self):
-        return self.symbolic_ode.Nsys
+        if self.is_variational:
+            return self.dof//2
+        else:
+            return self.dof
 
     @property
     def x(self):
@@ -867,10 +849,6 @@ class VariationalFlowOrbit(VariationalOrbit, FlowOrbit):
 
     def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
         VariationalOrbit.__init__(self, ode, lowlevel, stack)
-    
-    @property
-    def nd(self):
-        return 2*self.symbolic_ode.Nsys
 
     @property
     def x(self):
@@ -892,16 +870,15 @@ class HamiltonianSystem:
         for i in range(len(cls._instances)):
             if cls._instances[i][0] == args:
                 return cls._instances[i][1]
-        
+        for v in variables:
+            if len(v.name) != 1 or v.name == 't':
+                raise ValueError("All variables in the dynamical system need to have exactly one letter, and different from 't'") 
         obj = super().__new__(cls)
         cls._instances.append((args, obj))
         return obj
 
     def __init__(self, potential: sym.Expr, *variables: sym.Variable, args: tuple[sym.Variable, ...]=()):
         self.__args = (potential, variables, tuple(args))
-        for v in variables:
-            if len(v.name) != 1:
-                raise ValueError("All variables in the dynamical system need to have exactly one letter")
             
     @property
     def nd(self):
