@@ -690,8 +690,8 @@ class Orbit(Base):
             raise ValueError(f"Initial conditions need to be a 1D array of size {self.dof}")
         self._remake(t0, f0)
 
-    def current_ics(self):
-        return self._parse_ics((self.data[-1, 0], self.data[-1, 1:]))
+    def current_ics(self, *args):
+        return self._parse_ics((self.data[-1, 0], self.data[-1, 1:]), *args)
 
     def integrate(self, Delta_t, dt, func = "solve", **kwargs):
         if self.diverges or self.is_stiff:
@@ -704,12 +704,12 @@ class Orbit(Base):
         if self.data.shape[0] == 0:
             raise RuntimeError('No initial conditions have been set')
         
-        ics = self._parse_ics((self.data[-1, 0], self.data[-1, 1:]))
+        ics = self._parse_ics((self.data[-1, 0], self.data[-1, 1:]), *kwargs.get('ics_parser', ()))
         res: OdeResult = getattr(self.ode, func)(ics, self.data[-1, 0]+Delta_t, dt, **kwargs)
         Orbit._absorb_oderes(self, res)
         return res
 
-    def _parse_ics(self, ics):
+    def _parse_ics(self, ics, *args):
         return (float(ics[0]), list(ics[1]))
     
     def _absorb_oderes(self, res: OdeResult):
@@ -771,8 +771,8 @@ class VariationalOrbit(Orbit):
         f0 = [*q0, *delq0]
         Orbit.set_ics(self, t0, f0)
 
-    def integrate(self,  Delta_t, dt, func = "solve", **kwargs):
-        res = Orbit.integrate(self, Delta_t, dt, func, **kwargs)
+    def integrate(self,  Delta_t, dt, renorm=False, func = "solve", **kwargs):
+        res = Orbit.integrate(self, Delta_t, dt, func, ics_parser=(renorm,), **kwargs)
         self._absorb_ksi(res)
         return res
     
@@ -781,12 +781,13 @@ class VariationalOrbit(Orbit):
         for _ in range(split):
             self.integrate(Delta_t/split, dt, err=err, max_frames=max_frames)
     
-    def _parse_ics(self, ics):
+    def _parse_ics(self, ics, renorm=False):
         t0, f0 = ics
         q0 = f0[:self.dof//2]
         delq0 = f0[self.dof//2:]
-        ksi = np.linalg.norm(delq0)
-        delq0 = delq0/ksi
+        if renorm:
+            ksi = np.linalg.norm(delq0)
+            delq0 = delq0/ksi
         qnew = np.concatenate((q0, delq0))
         return (t0, qnew)
     
@@ -950,7 +951,7 @@ class HamiltonianSystem:
         orb.set_ics(0., [*q0, *delq0])
         return orb
 
-def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, method='RK4', max_frames=-1, args=(), threads=-1)->list[OdeResult]:
+def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, cutoff_step=0., method='RK4', max_frames=-1, args=(), threads=-1)->list[OdeResult]:
 
     cls = [orb.ode.__class__ for orb in orbits]
     if not hasattr(cls[0], 'dsolve_all'):
@@ -958,7 +959,7 @@ def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, method='RK4', max_
     ode_data = []
     for orb in orbits:
         ics = orb.current_ics()
-        ode_data.append((orb.ode, dict(ics = ics, t=ics[0]+Delta_t, dt=dt, err=err, method=method, max_frames=max_frames, args=args)))
+        ode_data.append((orb.ode, dict(ics = ics, t=ics[0]+Delta_t, dt=dt, err=err, cutoff_step=cutoff_step, method=method, max_frames=max_frames, args=args)))
 
     cls: LowLevelODE = cls[0]
 

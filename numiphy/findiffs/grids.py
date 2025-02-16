@@ -43,7 +43,7 @@ class Grid:
         ------------
         index (tuple): The index of the grid in the format (i, j, k)
         '''
-        return tuple(self.x[axis][index[axis]] for axis in range(self.nd))
+        return tuple(float(self.x[axis][index[axis]]) for axis in range(self.nd))
 
     def x_mesh(self, *axis):
         '''
