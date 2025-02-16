@@ -275,7 +275,10 @@ void define_ode_module(py::module& m, ode<Tx, Tf> func_ptr) {
         .def("copy", &PyOde<Tx, Tf>::copy)
         .def_static("dsolve_all", &PyOde<Tx, Tf>::py_dsolve_all,
             py::arg("data"),
-            py::arg("threads") = -1);
+            py::arg("threads") = -1)
+        .def("__deepcopy__", [](const PyOde<Tx, Tf> &self, py::dict) {
+            return self.copy();  // Calls copy constructor and returns a new object
+        });
 
 
     py::class_<PyOdeResult<Tx>>(m, "OdeResult", py::module_local())

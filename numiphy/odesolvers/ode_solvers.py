@@ -170,7 +170,7 @@ class ODE:
     def solve_all(self, params: list[dict], threads=-1)->list[OdeResult]:...
 
     def copy(self)->ODE:...
-    
+
 
 class PythonicODE(ODE):
 
@@ -621,6 +621,13 @@ class Base:
                     self._args[key] = value.copy()
                 else:
                     self._args[key] = value
+
+    def clone(self):
+        obj = object.__new__(type(self))
+        for key in self.__dict__:
+            obj.__dict__[key] = copy.deepcopy(self.__dict__[key])
+        return obj
+
 
 class OdeResult(Base):
 
