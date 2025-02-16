@@ -130,7 +130,6 @@ def cromer_step(df, t, f, dt, *args):
     x = f[:nd] + dt*v
     return np.array([*x, *v])
 
-
 def verlet_step(df, t, f, dt, *args):
     '''
     Advanve a Hamiltonian system of equations by a single step using the velocity-Verlet formula
@@ -673,6 +672,11 @@ class Orbit(Base):
     def is_variational(self):
         return isinstance(self, VariationalOrbit)
 
+    def newcopy(self):
+        obj = self.clone()
+        obj.clear()
+        return obj
+    
     def clear(self):
         self._set(data=self._empty(), diverges=False, is_stiff=False)
 
