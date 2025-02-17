@@ -165,7 +165,7 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
     }
     
     if (!pyparams.breakcond.is(py::none())) {
-        breakcond = [pyparams](const Tx& x, const Tx& f) -> bool {
+        breakcond = [pyparams](const Tx& x, const Tf& f) -> bool {
             bool res = pyparams.breakcond(x, to_numpy(f, {f.size()})).equal(py::bool_(true));
             return res;
         };
