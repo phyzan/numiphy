@@ -158,15 +158,15 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
     }
 
     if (!pyparams.getcond.is(py::none())) {
-        getcond = [pyparams](const Tx& x1, const Tx& x2, const Tf& f1, const Tf& f2) -> bool {
-            bool res = pyparams.getcond(x1, x2, to_numpy(f1, {f1.size()}), to_numpy(f2, {f2.size()})).equal(py::bool_(true));
+        getcond = [pyparams](const Tx& x, const Tf& f) -> bool {
+            bool res = pyparams.getcond(x, to_numpy(f, {f1.size()})).equal(py::bool_(true));
             return res;
         };
     }
     
     if (!pyparams.breakcond.is(py::none())) {
-        breakcond = [pyparams](const Tx& x1, const Tx& x2, const Tf& f1, const Tf& f2) -> bool {
-            bool res = pyparams.breakcond(x1, x2, to_numpy(f1, {f1.size()}), to_numpy(f2, {f2.size()})).equal(py::bool_(true));
+        breakcond = [pyparams](const Tx& x, const Tx& f) -> bool {
+            bool res = pyparams.breakcond(x, to_numpy(f, {f.size()})).equal(py::bool_(true));
             return res;
         };
     }
