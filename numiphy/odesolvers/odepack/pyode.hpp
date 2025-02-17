@@ -159,7 +159,7 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
 
     if (!pyparams.getcond.is(py::none())) {
         getcond = [pyparams](const Tx& x, const Tf& f) -> bool {
-            bool res = pyparams.getcond(x, to_numpy(f, {f1.size()})).equal(py::bool_(true));
+            bool res = pyparams.getcond(x, to_numpy(f, {f.size()})).equal(py::bool_(true));
             return res;
         };
     }
