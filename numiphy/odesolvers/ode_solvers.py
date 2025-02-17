@@ -265,11 +265,11 @@ class PythonicODE(ODE):
                 if np.any(np.logical_or(np.isnan(f_new), np.isinf(f_new))):
                     diverges = True
                     break
-                if breakcond(ti+dt, f_new) and not breakcond(ti, f):
+                if breakcond(ti, ti+dt, f, f_new):
                     cond_sat = True
                     dt, f_new = self._get_step(update, breakcond, f, ti, dt, args)
                 elif getcond is not None:
-                    if getcond(ti+dt, f_new) and not getcond(ti, f):
+                    if getcond(ti, ti+dt, f, f_new):
                         _cond_sat = True
                         dt, f_new = self._get_step(update, getcond, f, ti, dt, args)
 
@@ -301,7 +301,7 @@ class PythonicODE(ODE):
     def _get_step(self, update, cond, f1, ti, dt, args):
         def h(t):
             _f = update(self.df, ti, f1, t-ti, *args)
-            return (cond(ti, f1)-0.5) * (cond(ti+dt, _f)-0.5)
+            return cond(ti, ti+dt, f1, _f)-0.5
         dt = bisectright(h, ti, ti+dt) - ti
         return dt, update(self.df, ti, f1, dt, *args)
 

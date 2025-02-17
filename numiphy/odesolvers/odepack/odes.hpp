@@ -14,7 +14,7 @@ template<class Tx, class Tf>
 using stepfunc = Tf(*)(ode<Tx, Tf>, const Tx&, const Tf&, const Tx&, const std::vector<Tx>&);
 
 template<class Tx, class Tf>
-using cond = std::function<bool(const Tx&, const Tf&)>;
+using cond = std::function<bool(const Tx&, const Tx&, const Tf&, const Tf&)>;
 
 template<class Any, class prec>
 prec bisect_right(const Any& obj, const prec& a, const prec& b, const prec& tol = 1e-15);
@@ -245,7 +245,7 @@ Tf _verlet(ode<Tx, Tf> ode, const Tx& x, const Tf& f, const Tx& dx, const std::v
 template<class Tx, class Tf>
 int StepGetter<Tx, Tf>::objfun(const Tx& x) const{
     Tf f = update(df, x_initial, f_initial, x-x_initial, args);
-    return (condition(x, f) && !condition(x_initial, f_initial)) == true ? 1: -1;
+    return (condition(x_initial, x, f_initial, f) > 0) ? 1: -1;
 }
 
 template<class Tx, class Tf>
@@ -388,13 +388,13 @@ const OdeResult<Tx, Tf> ODE<Tx, Tf>::solve(const OdeArgs<Tx, Tf>& params) const 
             break;
         }
         
-        if ( (breakcond != nullptr) && ( breakcond(xi+dx, f_tmp) && !breakcond(xi, fi) )){
+        if ( (breakcond != nullptr) && breakcond(xi, xi+dx, fi, f_tmp)){
             ready = true;
             StepGetter<Tx, Tf> sg{_ode, update, xi, fi, breakcond, args};
             dx = sg.get(dx);
             fi = update(_ode, xi, fi, dx, args);
         }
-        else if ( (getcond != nullptr) && ( getcond(xi+dx, f_tmp) && !getcond(xi, fi) )){
+        else if ( (getcond != nullptr) && getcond(xi, xi+dx, fi, f_tmp)){
             capture = true;
             StepGetter<Tx, Tf> sg{_ode, update, xi, fi, getcond, args};
             dx = sg.get(dx);
