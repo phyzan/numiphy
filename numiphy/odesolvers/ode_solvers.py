@@ -198,7 +198,7 @@ class PythonicODE(ODE):
     def copy(self):
         return PythonicODE(self.df)
 
-    def custom_solver(self, ics, t, dt, update, lte, args=(), getcond=None, breakcond = None, err = 0., cutoff_step=0., max_frames = -1, display = False, mask = None, thres = 1e-30, checknan=True):
+    def custom_solver(self, ics, t, dt, update, lte, args=(), getcond=None, breakcond = None, err = 0., cutoff_step=0., max_frames = -1, display = False, mask = None):
         '''
         This is the core algorithm that solves a system of ode's using any available method.
         It is an internal function and should not be called by the user yet. It will be easy to
@@ -235,9 +235,9 @@ class PythonicODE(ODE):
                     f_half = update(self.df, ti, f, dt/2, *args)
                     f_double = update(self.df, ti+dt/2, f_half, dt/2, *args)
                     
-                    if thres > 0.0 and isinstance(f_double, np.ndarray):
-                        msk = np.abs(f_double) > thres
-                        errs = np.abs((f_single - f_double)[msk]/np.abs(f_double)[msk])
+                    if isinstance(f_double, np.ndarray):
+                        msk = np.abs(f_double) > 0
+                        errs = np.abs((f_single - f_double)[msk]/f_double[msk])
                         if len(errs) > 0:
                             rel_err = np.max(errs)
                             if rel_err > 0:
@@ -250,7 +250,7 @@ class PythonicODE(ODE):
                         else:
                             break
                     else:
-                        rel_err = np.max(np.abs((f_single - f_double)/np.abs(f_double)))
+                        rel_err = np.max(np.abs((f_single - f_double)/f_double))
                         if rel_err != 0:
                             dt = 0.9* dt * (err/rel_err)**pow
                             if abs(dt)< cutoff_step:
@@ -262,10 +262,9 @@ class PythonicODE(ODE):
                     dt = t - ti
                 #step size determined
                 f_new = update(self.df, ti, f, dt, *args)
-                if checknan:
-                    if np.any(np.logical_or(np.isnan(f_new), np.isinf(f_new))):
-                        diverges = True
-                        break
+                if np.any(np.logical_or(np.isnan(f_new), np.isinf(f_new))):
+                    diverges = True
+                    break
                 if breakcond(ti, ti+dt, f, f_new):
                     cond_sat = True
                     dt, f_new = self._get_step(update, breakcond, f, ti, dt, args)
@@ -328,8 +327,6 @@ class PythonicODE(ODE):
                 It is calculated assuming that the integrator stops when the integration variable reaches "t". This
                 percentage may be completely misleading if a break condition "breakcond" has been given.
             mask: If given, the value of the function in each time step is filtered through this function
-            thres: Applies only for a system of equations. All function values above this value will be used in the calculation of the relative error (if given). This is used to avoid overflow errors. Default is zero.
-            checknan (bool): After performing every step, the code checks if the result is nan. If it is, the code exits.
 
         Returns
         ---------------
@@ -695,7 +692,7 @@ class Orbit(Base):
 
     def integrate(self, Delta_t, dt, func = "solve", **kwargs):
         if self.diverges or self.is_stiff:
-            return OdeResult(self.t[-1:], self.f[-1:, :], diverges=self.diverges, is_stiff=self.is_stiff)
+            return OdeResult(self.t[-1:], self.f[-1:, :], diverges=self.diverges, is_stiff=self.is_stiff, runtime=0.)
         elif Delta_t<0 or dt<0:
             raise ValueError('Invalid Delta_t or dt inserted')
         elif Delta_t < dt:
@@ -704,7 +701,7 @@ class Orbit(Base):
         if self.data.shape[0] == 0:
             raise RuntimeError('No initial conditions have been set')
         
-        ics = self._parse_ics((self.data[-1, 0], self.data[-1, 1:]), *kwargs.get('ics_parser', ()))
+        ics = self._parse_ics((self.data[-1, 0], self.data[-1, 1:]), *kwargs.pop('ics_parser', ()))
         res: OdeResult = getattr(self.ode, func)(ics, self.data[-1, 0]+Delta_t, dt, **kwargs)
         Orbit._absorb_oderes(self, res)
         return res
@@ -771,7 +768,7 @@ class VariationalOrbit(Orbit):
         f0 = [*q0, *delq0]
         Orbit.set_ics(self, t0, f0)
 
-    def integrate(self,  Delta_t, dt, renorm=False, func = "solve", **kwargs):
+    def integrate(self, Delta_t, dt, renorm=False, func = "solve", **kwargs):
         res = Orbit.integrate(self, Delta_t, dt, func, ics_parser=(renorm,), **kwargs)
         self._absorb_ksi(res)
         return res
