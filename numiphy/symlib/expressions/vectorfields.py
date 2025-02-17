@@ -39,11 +39,11 @@ class VectorField2D:
         vec = self(*args, **kwargs)
         return vec/np.sqrt(vec[0]**2+vec[1]**2)
 
-    def call(self, q):
-        return self(*q)
+    def call(self, q, *args):
+        return self(*q, *args)
     
-    def calljac(self, q):
-        return self.Jac(*q)
+    def calljac(self, q, *args):
+        return self.Jac(*q, *args)
     
     def fixed_point(self, x0, y0, *args):
         return sciopt.root(self.call, [x0, y0], jac = self.calljac, args=args).x
@@ -67,7 +67,7 @@ class VectorField2D:
         which means dR/ds is the unit vector of the vector field at each point
         '''
         ics = (0, np.array([x0, y0]))
-        res = ods.PythonicODE(lambda s, q: self.unitvec(*q, *args)).solve(ics, s, ds, err=err, display=False).func
+        res = ods.PythonicODE(lambda s, q: self.unitvec(*q, *args)).solve(ics, s, ds, err=err).func
         return res.transpose()
         
     def loop(self, q, r, *args):
