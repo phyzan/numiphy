@@ -1546,12 +1546,12 @@ class _DummyScalarField(_ScalarField):
 
 class _Piecewise(Node):
     
-    Args: tuple[tuple[_Expr, Condition], ...]
+    Args: tuple[tuple[_Expr, Boolean], ...]
 
-    def __new__(cls, *cases: tuple[_Expr, Condition], simplify=True):
+    def __new__(cls, *cases: tuple[_Expr, Boolean], simplify=True):
         newcases = []
         for case in cases:
-            assert isinstance(case[1], (Condition, bool))
+            assert isinstance(case[1], (Boolean, bool))
             if case[1] is False:
                 continue
             elif case[1] is True:
@@ -1657,12 +1657,12 @@ class _Singleton:
     pi: _Special
 
 from .mathbase import _Mathfunc
-from .inequalities import Condition, Gt, Lt, Ge, Le
+from .conditional import Boolean, Gt, Lt, Ge, Le, And, Or, Not
 
 '''
 
 1) Typhinting
-2) Add And, Or in Inequalities
+2) Add And, Or in conditional
 3) Create Line2D
 4) Create VectorFields
 5) Add option for c/cpp code in lambdify

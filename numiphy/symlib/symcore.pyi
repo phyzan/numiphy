@@ -373,16 +373,16 @@ class _DummyScalarField(_ScalarField):
 
 class _Piecewise(Node):
 
-    def __new__(cls, *cases: tuple[_Expr, Condition], default: _Expr, simplify=True)->_Expr:...
+    def __new__(cls, *cases: tuple[_Expr, Boolean], default: _Expr, simplify=True)->_Expr:...
 
     @property
-    def conds(self)->tuple[Condition,...]:...
+    def conds(self)->tuple[Boolean,...]:...
 
     @property
     def default(self)->_Expr:...
 
     @property
-    def cases(self)->tuple[tuple[_Expr, Condition],...]:...
+    def cases(self)->tuple[tuple[_Expr, Boolean],...]:...
 
 
 
@@ -397,4 +397,4 @@ class _Singleton:
     pi: _Special
 
 
-from .inequalities import Condition
+from .conditional import Boolean
