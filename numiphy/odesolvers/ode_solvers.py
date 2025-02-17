@@ -569,7 +569,7 @@ class SymbolicOde:
     
     @cached_property
     def _lowlevel_heap(self):
-        return self._to_lowlevel(stack=True, variational=False)
+        return self._to_lowlevel(stack=False, variational=False)
 
     @cached_property
     def _lowlevel_stack_var(self):
@@ -577,8 +577,7 @@ class SymbolicOde:
     
     @cached_property
     def _lowlevel_heap_var(self):
-        return self._to_lowlevel(stack=True, variational=True)
-
+        return self._to_lowlevel(stack=False, variational=True)
 
 
 

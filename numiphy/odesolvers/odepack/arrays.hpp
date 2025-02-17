@@ -1063,7 +1063,7 @@ void _check_index(const int& index, const int& size){
     else{
         if (index > -size-1){return;}
     }
-    throw std::out_of_range("Index " + std::to_string(index) + " is out of range for an HeapArray of size " + std::to_string(size));
+    throw std::out_of_range("Index " + std::to_string(index) + " is out of range for an array of size " + std::to_string(size));
 }
 
 

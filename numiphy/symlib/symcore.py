@@ -1551,7 +1551,7 @@ class _Piecewise(Node):
     def __new__(cls, *cases: tuple[_Expr, Condition], simplify=True):
         newcases = []
         for case in cases:
-            assert isinstance(case[1], Condition)
+            assert isinstance(case[1], (Condition, bool))
             if case[1] is False:
                 continue
             elif case[1] is True:

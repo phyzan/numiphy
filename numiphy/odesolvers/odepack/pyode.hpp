@@ -80,9 +80,10 @@ struct PyOdeSet{
 };
 #pragma GCC visibility pop
 
-double toCPP_Array(const py::float_& a);
+template<class T>
+T toCPP_Array(const py::float_& a);
 
-template<class ArrayType>
+template<class ArrayType, class T>
 ArrayType toCPP_Array(const py::array& A);
 
 template<class T, size_t N, template<class, size_t> class ArrayType>
@@ -94,28 +95,33 @@ vec::HeapArray<T> flatten(const Tfall<Tf<T, N1>, N2>&);
 template<class Tx, class Tf>
 OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams);
 
+template<class Tx, class Tf>
+PyOdeResult<Tx> to_PyOdeResult(const OdeResult<Tx, Tf>& res);
+
 /*
 ------------------------------------------------------------------------------------
 -------------------------- IMPLEMENTATIONS -----------------------------------------
 ------------------------------------------------------------------------------------
 */
 
-
-double toCPP_Array(const py::float_& a){
-    return a.cast<double>();
+template<class T>
+T toCPP_Array(const py::float_& a){
+    return a.cast<T>();
 }
 
 
-template<class ArrayType>
-ArrayType toCPP_Array(const py::array& A){
+template<class ArrayType, class T>
+ArrayType toCPP_Array(const py::array& arr){
+    py::array_t<T> A = py::array_t<T>(arr);
     size_t n = A.size();
     ArrayType res;
-    const double* data = static_cast<const double*>(A.data());
+
+    const T* data = static_cast<const T*>(A.data());
     res.try_alloc(n);
     res.fill();
 
     for (size_t i=0; i<n; i++){
-        res[i] = toCPP_Array(data[i]);
+        res[i] = toCPP_Array<T>(data[i]);
     }
     return res;
 }
@@ -142,7 +148,7 @@ vec::HeapArray<T> flatten(const Tfall<Tf<T, N1>, N2>& f){
 
 template<class Tx, class Tf>
 OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
-    ICS<Tx, Tf> ics = {pyparams.ics[0].template cast<Tx>(), toCPP_Array<Tf>(pyparams.ics[1])};
+    ICS<Tx, Tf> ics = {pyparams.ics[0].template cast<Tx>(), toCPP_Array<Tf, Tx>(pyparams.ics[1])};
     Tx x = pyparams.x;
     Tx dx = pyparams.dx;
     Tx err = pyparams.err;
@@ -154,7 +160,7 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
     cond<Tx, Tf> breakcond = nullptr;
 
     if (!pyparams.pyargs.empty()){
-        args = toCPP_Array<vec::HeapArray<Tx>>(pyparams.pyargs).to_vector();
+        args = toCPP_Array<vec::HeapArray<Tx>, Tx>(pyparams.pyargs).to_vector();
     }
 
     if (!pyparams.getcond.is(py::none())) {
@@ -173,7 +179,18 @@ OdeArgs<Tx, Tf> to_OdeArgs(const PyOdeArgs<Tx>& pyparams){
 
     OdeArgs<Tx, Tf> res = {ics, x, dx, err, cutoff_step, method, max_frames, args, getcond, breakcond};
     return res;
-    
+}
+
+template<class Tx, class Tf>
+PyOdeResult<Tx> to_PyOdeResult(const OdeResult<Tx, Tf>& res){
+
+    vec::HeapArray<Tx> f_flat = flatten(res.f);
+    size_t nd = res.f[0].size();
+    size_t nt = res.f.size();
+
+    PyOdeResult<Tx> pyres{res.x, f_flat, to_numpy(res.x, {nt}), to_numpy(f_flat, {nt, nd}), res.diverges, res.is_stiff, res.runtime};
+
+    return pyres;
 }
 
 
@@ -184,13 +201,10 @@ const PyOdeResult<Tx> PyOde<Tx, Tf>::pysolve(const py::tuple& ics, const Tx& x, 
     OdeArgs<Tx, Tf> ode_args = to_OdeArgs<Tx, Tf>(pyparams);
 
     OdeResult<Tx, Tf> res = ODE<Tx, Tf>::solve(ode_args);
-    vec::HeapArray<Tx> f_flat = flatten(res.f);
-    size_t nd = res.f[0].size();
-    size_t nt = res.f.size();
 
-    PyOdeResult<Tx> odres{res.x, f_flat, to_numpy(res.x, {nt}), to_numpy(f_flat, {nt, nd}), res.diverges, res.is_stiff, res.runtime};
+    PyOdeResult<Tx> pyres = to_PyOdeResult(res);
 
-    return odres;
+    return pyres;
 }
 
 
@@ -213,7 +227,6 @@ template<class Tx, class Tf>
 py::list PyOde<Tx, Tf>::py_dsolve_all(const py::list& data, int threads){
     
     size_t n = data.size();
-    size_t nd, nt;
     std::vector<OdeSet<Tx, Tf>> odeset(n);
     std::vector<OdeResult<Tx, Tf>> ode_res;
     py::list res;
@@ -237,10 +250,7 @@ py::list PyOde<Tx, Tf>::py_dsolve_all(const py::list& data, int threads){
     ode_res = dsolve_all(odeset, threads);
     //convert results to python type
     for (size_t i=0; i<n; i++){
-        nd = ode_res[i].f[0].size();
-        nt = ode_res[i].f.size();
-        vec::HeapArray<Tx> f_flat = flatten(ode_res[i].f);
-        res.append(PyOdeResult<Tx>({ode_res[i].x, f_flat, to_numpy(ode_res[i].x, {nt}), to_numpy(f_flat, {nt, nd}), ode_res[i].diverges, ode_res[i].is_stiff, ode_res[i].runtime}));
+        res.append(to_PyOdeResult(ode_res[i]));
     }
     
     return res;

@@ -185,8 +185,8 @@ class Singletons(_Singleton):
 
 class Any(Expr, _Any):...
 
-
-
+def sqrt(x):
+    return x**Rational(1, 2)
 
 def binomial(n, k)->Integer:
     return Rational(math.factorial(n), math.factorial(k)*math.factorial(n-k))
