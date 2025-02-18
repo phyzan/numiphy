@@ -11,8 +11,10 @@ import inspect
 from scipy.special import erf, erfinv
 import timeit
 from matplotlib.figure import Figure as Fig
-import os, shutil
+import os
 import pickle
+import copy
+import importlib.machinery
 
 
 def interpolate1D(x: np.ndarray, y: np.ndarray, x_new: np.ndarray)->np.ndarray:
@@ -556,6 +558,11 @@ def inv_gaussian_dist(p, a: float, b: float, center=0., sigma=1.):
 
     return res
 
+def suffix():
+    ext_sfxs = importlib.machinery.EXTENSION_SUFFIXES
+    so_lib_sfxs = [suffix for suffix in ext_sfxs if suffix.endswith('.so')]
+    return so_lib_sfxs[0] if so_lib_sfxs else None
+
 
 class Iterator:
     '''
@@ -741,3 +748,45 @@ class KronSum:
     
     def __repr__(self):
         return str(self.construct())
+
+
+class Template:
+
+    __slots__ = '__dict__',
+
+    def __init__(self, **kwargs):
+        self.__dict__['_args'] = {key: kwargs[key] for key in kwargs}
+    
+    @property
+    def _args(self)->dict:
+        return self.__dict__['_args']
+    
+    def __getattr__(self, attr):
+        return self._args[attr]
+    
+    def __setattr__(self, attr, value):
+        raise ValueError("Class does not allow attribute setting")
+    
+    def _set(self, **kwargs):
+        for attr in kwargs:
+            if attr not in self._args:
+                raise ValueError(f'{self.__class__} object has no attribute named "{attr}"')
+            else:
+                self._args[attr] = kwargs[attr]
+    
+    def _copy_data_from(self, other: Template):
+        if ( type(other) is not type(self) ) or ( list(other._args.keys()) != list(self._args.keys()) ):
+            raise ValueError(f'Cannot copy data from object of type "{other.__class__}" to object of type "{self.__class__}"')
+        else:
+            for key in self._args:
+                value = other._args[key]
+                if isinstance(value, (list, np.ndarray)):
+                    self._args[key] = value.copy()
+                else:
+                    self._args[key] = value
+
+    def clone(self):
+        obj = object.__new__(type(self))
+        for key in self.__dict__:
+            obj.__dict__[key] = copy.deepcopy(self.__dict__[key])
+        return obj

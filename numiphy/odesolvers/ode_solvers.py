@@ -3,17 +3,16 @@ from __future__ import annotations
 from ..symlib import expressions as sym
 import numpy as np
 import time
-from typing import Callable, Literal, Tuple, Union
+from typing import Callable, Literal
 from ..toolkit import tools
+from ..toolkit import Template, suffix
 import importlib.util
-import subprocess, glob, os, sys
+import subprocess, os
 from functools import cached_property
 import tempfile
-import importlib.machinery
-import copy
 
 
-def _bisect(f, a, b, tol = 1e-12):
+def bisect(f, a, b, tol = 1e-12):
     #TODO
     #in the future, maybe include the option with tol = 0,
     #where the loop stops only when a and b become the same due to
@@ -33,55 +32,6 @@ def _bisect(f, a, b, tol = 1e-12):
             b = c
         err = abs(b-a)
     return [a, c, b]
-
-def bisect(f, a, b, tol = 1e-12):
-    return _bisect(f, a, b, tol)[1]
-
-def bisectleft(f, a, b, tol = 1e-12):
-    return _bisect(f, a, b, tol)[0]
-
-def bisectright(f, a, b, tol = 1e-12):
-    return _bisect(f, a, b, tol)[2]
-
-Bisect = _bisect
-
-def _suffix():
-    ext_sfxs = importlib.machinery.EXTENSION_SUFFIXES
-    so_lib_sfxs = [suffix for suffix in ext_sfxs if suffix.endswith('.so')]
-    return so_lib_sfxs[0] if so_lib_sfxs else None
-
-class BisectionRegion:
-
-    def __init__(self, xmin, xmax, checker=None):
-        self.xmin = xmin
-        self.xmax = xmax
-        if checker is None:
-            checker = lambda root: True
-        self.isroot = checker
-
-    def subdivide(self):
-        return BisectionRegion(self.xmin, (self.xmin+self.xmax)/2, self.isroot), BisectionRegion((self.xmin+self.xmax)/2, self.xmax, self.isroot)
-    
-    def get_root(self, f, nmax=5, err=1e-8):
-        if nmax == 0:
-            return None
-        elif f(self.xmin) * f(self.xmax) < 0:
-            print(f'Possible root in the interval {self.xmin, self.xmax}')
-            root = bisect(f, self.xmin, self.xmax, err)
-            if self.isroot(root):
-                return root
-            else:
-                print('Root discarded')
-        
-        region1, region2 = self.subdivide()
-        r1 = region1.get_root(f, nmax-1, err)
-        r2 = region2.get_root(f, nmax-1, err)
-        if r1 is not None:
-            return r1
-        elif r2 is not None:
-            return r2
-        else:
-            return None
 
 
 def euler_step(df, t, f, dt, *args):
@@ -302,7 +252,7 @@ class PythonicODE(ODE):
         def h(t):
             _f = update(self.df, ti, f1, t-ti, *args)
             return cond(ti, ti+dt, f1, _f)-0.5
-        dt = bisectright(h, ti, ti+dt) - ti
+        dt = bisect(h, ti, ti+dt)[2] - ti
         return dt, update(self.df, ti, f1, dt, *args)
 
     def solve(self, ics: tuple[float, np.ndarray], t: float, dt: float, method: literal='RK4', **kwargs)->OdeResult:
@@ -435,7 +385,7 @@ class PythonicODE(ODE):
 
 def import_lowlevel_module(directory: str, module_name):
     so_file = os.path.join(directory, module_name)
-    so_full_path = so_file + _suffix()
+    so_full_path = so_file + suffix()
     spec = importlib.util.spec_from_file_location(module_name, so_full_path)
     temp_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(temp_module)
@@ -461,8 +411,6 @@ class LowLevelODE(ODE):
 
     @classmethod
     def dsolve_all(cls, data: list[tuple[LowLevelODE, dict]], threads=-1)->list[OdeResult]:...
-
-
 
 
 class SymbolicOde:
@@ -580,51 +528,7 @@ class SymbolicOde:
         return self._to_lowlevel(stack=False, variational=True)
 
 
-
-
-class Base:
-
-    __slots__ = '__dict__',
-
-    def __init__(self, **kwargs):
-        self.__dict__['_args'] = {key: kwargs[key] for key in kwargs}
-    
-    @property
-    def _args(self)->dict:
-        return self.__dict__['_args']
-    
-    def __getattr__(self, attr):
-        return self._args[attr]
-    
-    def __setattr__(self, attr, value):
-        raise ValueError("Class does not allow attribute setting")
-    
-    def _set(self, **kwargs):
-        for attr in kwargs:
-            if attr not in self._args:
-                raise ValueError(f'{self.__class__} object has no attribute named "{attr}"')
-            else:
-                self._args[attr] = kwargs[attr]
-    
-    def _copy_data_from(self, other: Base):
-        if ( type(other) is not type(self) ) or ( list(other._args.keys()) != list(self._args.keys()) ):
-            raise ValueError(f'Cannot copy data from object of type "{other.__class__}" to object of type "{self.__class__}"')
-        else:
-            for key in self._args:
-                value = other._args[key]
-                if isinstance(value, (list, np.ndarray)):
-                    self._args[key] = value.copy()
-                else:
-                    self._args[key] = value
-
-    def clone(self):
-        obj = object.__new__(type(self))
-        for key in self.__dict__:
-            obj.__dict__[key] = copy.deepcopy(self.__dict__[key])
-        return obj
-
-
-class OdeResult(Base):
+class OdeResult(Template):
 
     var: np.ndarray
     func: np.ndarray
@@ -633,336 +537,5 @@ class OdeResult(Base):
     runtime: float
 
     def __init__(self, var_arr, f_arr, diverges, is_stiff, runtime):
-        Base.__init__(self, var=np.asarray(var_arr), func=np.asarray(f_arr), diverges=diverges, is_stiff=is_stiff, runtime=runtime)
+        Template.__init__(self, var=np.asarray(var_arr), func=np.asarray(f_arr), diverges=diverges, is_stiff=is_stiff, runtime=runtime)
     
-
-class Orbit(Base):
-
-    ode: ODE
-    data: np.ndarray
-    diverges: bool
-    is_stiff: bool
-    
-    def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
-        Orbit._init(self, ode, lowlevel=lowlevel, stack=stack)
-
-    def _init(self, ode: SymbolicOde, lowlevel: bool, stack: bool, **kwargs):
-        _ode = ode.ode(lowlevel=lowlevel, stack=stack, variational=self.is_variational)
-        
-        nsys = 2*ode.Nsys if self.is_variational else ode.Nsys
-        Base.__init__(self, ode=_ode, data=np.empty((0, nsys+1), dtype=np.float64), diverges=False, is_stiff=False, **kwargs)
-    
-    @property
-    def dof(self)->int:
-        return self.data.shape[1]-1
-    
-    @property
-    def t(self)->np.ndarray:
-        return self.data[:, 0].copy()
-
-    @property
-    def f(self)->np.ndarray:
-        return self.data[:, 1:].copy()
-    
-    @property
-    def is_variational(self):
-        return isinstance(self, VariationalOrbit)
-
-    def newcopy(self):
-        obj = self.clone()
-        obj.clear()
-        return obj
-    
-    def clear(self):
-        self._set(data=self._empty(), diverges=False, is_stiff=False)
-
-    def reset(self):
-        if self.data.shape[0] > 0:
-            self._remake(self.data[0, 0], self.data[0, 1:])
-    
-    def set_ics(self, t0: float, f0: np.ndarray):
-        f0 = np.array(f0)
-        if f0.shape != (self.dof,):
-            raise ValueError(f"Initial conditions need to be a 1D array of size {self.dof}")
-        self._remake(t0, f0)
-
-    def current_ics(self, *args):
-        return self._parse_ics((self.data[-1, 0], self.data[-1, 1:]), *args)
-
-    def integrate(self, Delta_t, dt, func = "solve", **kwargs):
-        if self.diverges or self.is_stiff:
-            return OdeResult(self.t[-1:], self.f[-1:, :], diverges=self.diverges, is_stiff=self.is_stiff, runtime=0.)
-        elif Delta_t<0 or dt<0:
-            raise ValueError('Invalid Delta_t or dt inserted')
-        elif Delta_t < dt:
-            raise ValueError('Delta_t must be greater than dt')
-        
-        if self.data.shape[0] == 0:
-            raise RuntimeError('No initial conditions have been set')
-        
-        ics = self._parse_ics((self.data[-1, 0], self.data[-1, 1:]), *kwargs.pop('ics_parser', ()))
-        res: OdeResult = getattr(self.ode, func)(ics, self.data[-1, 0]+Delta_t, dt, **kwargs)
-        Orbit._absorb_oderes(self, res)
-        return res
-
-    def _parse_ics(self, ics, *args):
-        return (float(ics[0]), list(ics[1]))
-    
-    def _absorb_oderes(self, res: OdeResult):
-        tarr, farr = res.var, res.func
-        
-        newdata = np.column_stack((tarr, farr))
-        data = np.concatenate((self.data, newdata[1:]))
-        self._set(data=data, diverges=res.diverges, is_stiff=res.is_stiff)
-        return res
-
-    def _empty(self):
-        return np.empty((0, self.dof+1), dtype=np.float64)
-
-    def _remake(self, t0, f0):
-        data = np.array([[t0, *f0]], dtype=np.float64)
-        if data.shape != (1, self.dof+1):
-            raise ValueError(f"The provided initial conditions have data shape {data.shape} instead of {(1, self.dof+1)}")
-        self._set(data=data, diverges=False, is_stiff=False)
-
-
-class VariationalOrbit(Orbit):
-
-    _logksi: list[float]
-
-    def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
-        VariationalOrbit._init(self, ode, lowlevel=lowlevel, stack=stack, _logksi=[])
-
-    @property
-    def q(self):
-        return self.data[:, 1:1+self.dof//2]
-
-    @property
-    def delq(self):
-        return self.data[:, 1+self.dof//2:].copy()
-    
-    @property
-    def ksi(self):
-        return np.linalg.norm(self.delq, axis=1)
-    
-    @property
-    def lyapunov(self):
-        res = np.array(self._logksi[1:])/(self.t[1:]-self.t[0])
-        res = np.concatenate((np.array([0.]), res))
-        return self.t, res
-    
-    def reset(self):
-        Orbit.reset(self)
-        if self._logksi:
-            self._set(_logksi = [self._logksi[0]])
-
-    def clear(self):
-        Orbit.clear(self)
-        self._set(_logksi=[])
-
-    def set_ics(self, t0, f0):
-        self._set(_logksi=[0.])
-        q0, delq0 = f0[:self.dof//2], f0[self.dof//2:]
-        delq0 = np.array(delq0)/np.linalg.norm(delq0)
-        f0 = [*q0, *delq0]
-        Orbit.set_ics(self, t0, f0)
-
-    def integrate(self, Delta_t, dt, renorm=False, func = "solve", **kwargs):
-        res = Orbit.integrate(self, Delta_t, dt, func, ics_parser=(renorm,), **kwargs)
-        self._absorb_ksi(res)
-        return res
-    
-    def get(self, Delta_t, dt, err=1e-8, max_frames=-1, split=100):
-
-        for _ in range(split):
-            self.integrate(Delta_t/split, dt, err=err, max_frames=max_frames)
-    
-    def _parse_ics(self, ics, renorm=False):
-        t0, f0 = ics
-        q0 = f0[:self.dof//2]
-        delq0 = f0[self.dof//2:]
-        if renorm:
-            ksi = np.linalg.norm(delq0)
-            delq0 = delq0/ksi
-        qnew = np.concatenate((q0, delq0))
-        return (t0, qnew)
-    
-    def _absorb_oderes(self, res):
-        Orbit._absorb_oderes(self, res)
-        self._absorb_ksi(res)
-
-    def _absorb_ksi(self, res: OdeResult):
-        ksi = np.linalg.norm(res.func[:, self.dof//2:], axis=1)
-        logksi = np.log(ksi) + self._logksi[-1]
-        self._set(_logksi=self._logksi+list(logksi[1:]))
-
-
-class HamiltonianOrbit(Orbit):
-
-    def __init__(self, potential: sym.Expr, variables: tuple[sym.Variable, ...], args: tuple[sym.Variable, ...] = (), lowlevel=True, stack=True):
-        HamiltonianOrbit._init(self, potential=potential, variables=variables, args=args, lowlevel=lowlevel, stack=stack)
-    
-    def _init(self, potential: sym.Expr, variables: tuple[sym.Variable, ...], args: tuple[sym.Variable, ...], lowlevel: bool, stack: bool, **kwargs):
-        hs = HamiltonianSystem(potential, *variables, args=args)
-        return Orbit._init(self, hs.symbolic_ode, lowlevel, stack, **kwargs)
-
-    @property
-    def nd(self):
-        if self.is_variational:
-            return self.dof//4
-        else:
-            return self.dof//2
-
-    @property
-    def x(self):
-        return self.data[:, 1:1+self.nd].transpose()
-
-    @property
-    def p(self):
-        return self.data[:, 1+self.nd:1+2*self.nd].transpose()
-
-
-class VariationalHamiltonianOrbit(VariationalOrbit, HamiltonianOrbit):
-
-    def __init__(self, potential: sym.Expr, variables: tuple[sym.Variable, ...], args: tuple[sym.Variable, ...] = (), lowlevel=True, stack=True):
-        HamiltonianOrbit._init(self, potential=potential, variables=variables, args=args, lowlevel=lowlevel, stack=stack, _logksi=[])
-    
-    @property
-    def delx(self):
-        return self.data[:, 1+2*self.nd:1+3*self.nd]
-
-    @property
-    def delp(self):
-        return self.data[:, 1+3*self.nd:]
-
-
-class FlowOrbit(Orbit):
-
-    def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
-        Orbit.__init__(self, ode, lowlevel, stack)
-
-    @property
-    def nd(self):
-        if self.is_variational:
-            return self.dof//2
-        else:
-            return self.dof
-
-    @property
-    def x(self):
-        return self.data[:, 1:].transpose()
-
-
-class VariationalFlowOrbit(VariationalOrbit, FlowOrbit):
-
-    def __init__(self, ode: SymbolicOde, lowlevel=True, stack=True):
-        VariationalOrbit.__init__(self, ode, lowlevel, stack)
-
-    @property
-    def x(self):
-        return self.data[:, 1:1+self.nd].transpose()
-    
-    @property
-    def delx(self):
-        return self.data[:, 1+self.nd:]
-
-
-class HamiltonianSystem:
-
-    _instances: list[tuple[tuple[sym.Expr, ...], HamiltonianSystem]] = []
-
-    __args: tuple[sym.Expr, tuple[sym.Variable, ...], tuple[sym.Variable, ...]]
-
-    def __new__(cls, potential: sym.Expr, *variables: sym.Variable, args: tuple[sym.Variable, ...]=()):
-        args = (potential, variables, args)
-        for i in range(len(cls._instances)):
-            if cls._instances[i][0] == args:
-                return cls._instances[i][1]
-        for v in variables:
-            if len(v.name) != 1 or v.name == 't':
-                raise ValueError("All variables in the dynamical system need to have exactly one letter, and different from 't'") 
-        obj = super().__new__(cls)
-        cls._instances.append((args, obj))
-        return obj
-
-    def __init__(self, potential: sym.Expr, *variables: sym.Variable, args: tuple[sym.Variable, ...]=()):
-        self.__args = (potential, variables, tuple(args))
-            
-    @property
-    def nd(self):
-        return len(self.variables)
-    
-    @property
-    def variables(self)->tuple[sym.Variable, ...]:
-        return self.__args[1]
-    
-    @property
-    def extras(self):
-        return self.__args[2]
-    
-    @property
-    def V(self)->sym.Expr:
-        return self.__args[0]
-    
-    @cached_property
-    def H(self):
-        p = self.ode_vars[self.nd:]
-        T = sum([pi**2 for pi in p])/2
-        return T + self.V
-    
-    @property
-    def x(self):
-        return self.variables
-    
-    @property
-    def p(self):
-        return self.ode_vars[self.nd:]
-    
-    @cached_property
-    def rhs(self):
-        xdot = [self.H.diff(pi) for pi in self.p]
-        pdot = [-self.H.diff(xi) for xi in self.x]
-        return xdot+pdot
-    
-    @cached_property
-    def ode_vars(self)->tuple[sym.Variable, ...]:
-        return tuple([*self.variables] + [sym.Variable('p'+xi.name) for xi in self.variables])
-    
-    @cached_property
-    def symbolic_ode(self):
-        return SymbolicOde(*self.rhs, symbols=[sym.Variable('t'), *self.ode_vars], args=self.extras)
-    
-    def ode(self, lowlevel=True, stack=True, variational=False):
-        return self.symbolic_ode.ode(lowlevel=lowlevel, stack=stack, variational=variational)
-
-    def new_orbit(self, q0, lowlevel=True, stack=True):
-        orb = HamiltonianOrbit(self.V, self.variables, self.extras, lowlevel=lowlevel, stack=stack)
-        orb.set_ics(0., q0)
-        return orb
-
-    def new_varorbit(self, q0, delq0=None, lowlevel=True, stack=True):
-        orb = VariationalHamiltonianOrbit(self.V, self.variables, self.extras, lowlevel=lowlevel, stack=stack)
-        if delq0 is None:
-            delq0 = [1., *((2*self.nd-1)*[0.])]
-        orb.set_ics(0., [*q0, *delq0])
-        return orb
-
-def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, cutoff_step=0., method='RK4', max_frames=-1, args=(), threads=-1)->list[OdeResult]:
-
-    cls = [orb.ode.__class__ for orb in orbits]
-    if not hasattr(cls[0], 'dsolve_all'):
-        raise ValueError("All orbits passed in the parallel integrator must have a 'LowLevelODE' ode ")
-    ode_data = []
-    for orb in orbits:
-        ics = orb.current_ics()
-        ode_data.append((orb.ode, dict(ics = ics, t=ics[0]+Delta_t, dt=dt, err=err, cutoff_step=cutoff_step, method=method, max_frames=max_frames, args=args)))
-
-    cls: LowLevelODE = cls[0]
-
-    res = cls.dsolve_all(ode_data, threads)
-
-    for i in range(len(orbits)):
-        orbits[i]._absorb_oderes(res[i])
-    
-    return res
-
