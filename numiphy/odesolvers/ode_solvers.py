@@ -91,14 +91,6 @@ def verlet_step(df, t, f, dt, *args):
     v = f[nd:] + (a_next+a_now)*dt/2
     return np.array([*x, *v])
 
-# def verlet_step(xdot, vdot, t, x, v, dt, *args):
-#     '''
-#     Advanve a Hamiltonian system of equations by a single step using the velocity-Verlet formula
-#     '''
-#     a = vdot(t, x, *args)
-#     x = x + xdot(t, v, *args)*dt + 0.5*a*dt**2
-#     v = v + (a+vdot(t+dt, x, *args))*dt/2
-#     return np.array([x, v])
 
 class Updater:
     def __init__(self, update: Callable, mask: Callable):
@@ -110,7 +102,6 @@ class Updater:
         tnew = t + dt
         return self.mask(tnew, fnew)
     
-
 
 class ODE:
 
@@ -538,4 +529,3 @@ class OdeResult(Template):
 
     def __init__(self, var_arr, f_arr, diverges, is_stiff, runtime):
         Template.__init__(self, var=np.asarray(var_arr), func=np.asarray(f_arr), diverges=diverges, is_stiff=is_stiff, runtime=runtime)
-    
