@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(name = "numiphy",
       version="1.0",
-      python_requires=">=3.10",
+      python_requires=">=3.12",
       packages=find_packages(),
       package_data={"numiphy": ["odesolvers/odepack/*"]},
       include_package_data=True,
