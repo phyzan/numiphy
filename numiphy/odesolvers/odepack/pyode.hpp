@@ -220,7 +220,6 @@ py::list PyOde<Tx, Tf>::pysolve_all(const py::list& pyparams, int threads) const
     py::list res = py_dsolve_all(data, threads);
 
     return res;
-
 }
 
 template<class Tx, class Tf>
