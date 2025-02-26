@@ -1,11 +1,13 @@
 from __future__ import annotations
-from .ode_solvers import *
+from ..toolkit import Template
+import numpy as np
+from .odes import *
 
 
 
 class Orbit(Template):
 
-    ode: ODE
+    ode: LowLevelODE
     data: np.ndarray
     diverges: bool
     is_stiff: bool
@@ -79,7 +81,7 @@ class Orbit(Template):
         return (float(ics[0]), list(ics[1]))
     
     def _absorb_oderes(self, res: OdeResult, **kwargs):
-        tarr, farr = res.var, res.func
+        tarr, farr = res.t, res.y
         
         newdata = np.column_stack((tarr, farr))
         data = np.concatenate((self.data, newdata[1:]))
@@ -137,10 +139,10 @@ class VariationalOrbit(Orbit):
         f0 = [*q0, *delq0]
         Orbit.set_ics(self, t0, f0)
     
-    def get(self, Delta_t, dt, err=1e-8, max_frames=-1, split=100, renorm=False):
+    def get(self, Delta_t, dt, split=100, renorm=False, **odekw):
 
         for _ in range(split):
-            self.integrate(Delta_t/split, dt, err=err, max_frames=max_frames, renorm=renorm)
+            self.integrate(Delta_t/split, dt, renorm=renorm, **odekw)
     
     def _parse_ics(self, ics, **kwargs):
         t0, f0 = ics
@@ -157,7 +159,7 @@ class VariationalOrbit(Orbit):
         self._absorb_ksi(res, renorm=renorm)
 
     def _absorb_ksi(self, res: OdeResult, renorm=False):
-        ksi = np.linalg.norm(res.func[:, self.dof//2:], axis=1)
+        ksi = np.linalg.norm(res.y[:, self.dof//2:], axis=1)
         logksi = np.log(ksi)
         if renorm:
             logksi += self._logksi[-1]
@@ -315,19 +317,18 @@ class HamiltonianSystem:
         return orb
 
 
-def integrate_all(orbits: list[Orbit], Delta_t, dt, err=1e-8, cutoff_step=0., method='RK4', max_frames=-1, args=(), threads=-1, **kwargs)->list[OdeResult]:
+def integrate_all(orbits: list[Orbit], Delta_t, dt, threads=-1, **kwargs)->list[OdeResult]:
 
-    cls = [orb.ode.__class__ for orb in orbits]
-    if not hasattr(cls[0], 'dsolve_all'):
-        raise ValueError("All orbits passed in the parallel integrator must have a 'LowLevelODE' ode")
     ode_data = []
+    kw = dict(t=ics[0]+Delta_t, dt=dt)
+    kw.update(kwargs)
+    renorm = kwargs.pop('renorm', False)
     for orb in orbits:
-        ics = orb.now(**kwargs)
-        ode_data.append((orb.ode, dict(ics = ics, t=ics[0]+Delta_t, dt=dt, err=err, cutoff_step=cutoff_step, method=method, max_frames=max_frames, args=args)))
+        ics = orb.now(renorm=renorm)
+        kw.update()
+        ode_data.append((orb.ode, kw))
 
-    cls: LowLevelODE = cls[0]
-
-    res = cls.dsolve_all(ode_data, threads)
+    res = LowLevelODE.dsolve_all(ode_data, threads)
 
     for i in range(len(orbits)):
         orbits[i]._absorb_oderes(res[i], **kwargs)

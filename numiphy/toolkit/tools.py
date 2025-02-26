@@ -14,7 +14,32 @@ from matplotlib.figure import Figure as Fig
 import os
 import pickle
 import copy
-import importlib.machinery
+import sysconfig
+import importlib.util
+import subprocess, os
+
+
+def import_lowlevel_module(directory: str, module_name):
+    so_file = os.path.join(directory, module_name)
+    so_full_path = so_file + suffix()
+    spec = importlib.util.spec_from_file_location(module_name, so_full_path)
+    temp_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(temp_module)
+    return temp_module
+
+def compile(cpp_path, so_dir, module_name):
+
+    if not os.path.exists(cpp_path):
+        raise RuntimeError(f"CPP file path does not exist")
+    
+    if not os.path.exists(so_dir):
+        raise RuntimeError(f"Cannot compile ode at {so_dir}: Path does not exist")
+    
+    compile_comm = f"g++ -O3 -Wall -shared -std=c++20 -fopenmp -I/usr/include/python3.12 -I/usr/include/pybind11 -fPIC $(python3 -m pybind11 --includes) {cpp_path} -o {os.path.join(so_dir, module_name)}$(python3-config --extension-suffix)"
+    print('Compiling ODE...')
+
+    subprocess.check_call(compile_comm, shell=True)
+    print('Done')
 
 
 def interpolate1D(x: np.ndarray, y: np.ndarray, x_new: np.ndarray)->np.ndarray:
@@ -559,9 +584,28 @@ def inv_gaussian_dist(p, a: float, b: float, center=0., sigma=1.):
     return res
 
 def suffix():
-    ext_sfxs = importlib.machinery.EXTENSION_SUFFIXES
-    so_lib_sfxs = [suffix for suffix in ext_sfxs if suffix.endswith('.so')]
-    return so_lib_sfxs[0] if so_lib_sfxs else None
+    return sysconfig.get_config_var("EXT_SUFFIX")
+
+def bisect(f, a, b, xtol):
+    err = 2*xtol
+    _a = a
+    _b = b
+    c = a
+    if f(a)*f(b) > 0:
+        raise ValueError("Root not bracketed")
+    
+    while err > xtol:
+        c = (_a+_b)/2
+        if c==a or c==_b:
+            break
+        fm = f(c)
+        if f(a) * fm > 0:
+            _a = c
+        else:
+            _b = c
+        err = abs(_b-_a)
+
+        return (_a, c, _b)
 
 
 class Iterator:

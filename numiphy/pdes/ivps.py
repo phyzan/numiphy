@@ -65,12 +65,12 @@ class IVP(ABC):
     def apply_bcs(self, t, f: np.ndarray):
         return self.bcs.apply(f, t)
 
-    def solve(self, t, dt, method='RK4', err=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
         '''
         remember to include non-autonomous IVP's
         '''
         ics = (0, self.bcs.discretize(self.f0, 0))
-        kwargs = dict(t=t, dt=dt, method=method, err=err, max_frames=max_frames, display=display)
+        kwargs = dict(t=t, dt=dt, method=method, rtol=rtol, max_frames=max_frames, display=display)
         if self.bcs.is_homogeneous:
             ops = tuple([cached.cache_operator(op, self.grid, self.bcs, acc, fd) for op in self.operators])
             ics = (ics[0], self.bcs.reduced_array(ics[1]))
@@ -84,7 +84,7 @@ class IVP(ABC):
                 
         return x, f.flatten().reshape((*self.grid.shape, x.shape[0]), order='F')
     
-    def get_ScalarField(self, name: str, t, dt, method='RK4', err=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def get_ScalarField(self, name: str, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
         '''
         general method, even for non linear problems. I need to get the varnames when i have many operators.
         for linear IVP problems this is easy, it is just self.op.varnames because there is only one op.
@@ -96,7 +96,7 @@ class IVP(ABC):
                     v.append(x)
         variables: list[sym.Variable] = tools.sort(v, [x.axis for x in v])[0]
         names = [x.name for x in variables]
-        t, f = self.solve(t=t, dt=dt, method=method, err=err, max_frames=max_frames, display=display, acc=acc, fd=fd)
+        t, f = self.solve(t=t, dt=dt, method=method, rtol=rtol, max_frames=max_frames, display=display, acc=acc, fd=fd)
 
         return fields.ScalarField(f, self.grid*grids.Unstructured1D(t), name, *names, 't')
 
@@ -153,13 +153,13 @@ class HomLinearIBVP(HomLinearIVP):
         self.eigproblem = linalg.EigProblem(operator, bcs, self.grid)
         self._coef = coef
 
-    def solve(self, t, dt, method='RK4', err=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
         if method == 'propagator':
             self.arm_propagator()
             t_arr = np.append(np.arange(0, t, dt), [t])
             return t_arr, self.propagate(t_arr)
         else:
-            return super().solve(t, dt, method, err, max_frames, display, acc, fd)
+            return super().solve(t, dt, method, rtol, max_frames, display, acc, fd)
 
     def set_ics(self, f0: Callable[..., np.ndarray]):
         self.f0 = f0
@@ -211,12 +211,12 @@ class IVPsystem2D(ABC):
         s[1, :] = self.bcs2.apply(f[1], t)
         return s
     
-    def solve(self, t, dt, method='RK4', err=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
         f0 = self.joker.copy()
         f0[0, :] = self.bcs1.discretize(self.u0, 0)
         f0[1, :] = self.bcs2.discretize(self.v0, 0)
         ics = (0, f0)
-        kwargs = dict(t=t, dt=dt, method=method, err=err, max_frames=max_frames, display=display)
+        kwargs = dict(t=t, dt=dt, method=method, rtol=rtol, max_frames=max_frames, display=display)
         ops = tuple([cached.cache_operator(op, self.grid, acc=acc, fd=fd) for op in self.operators])
         ode = ods.ODE(self.dfdt, ics=ics)
         x, f = ode.solve(**kwargs, args=ops, mask = self.apply_bcs)
@@ -244,6 +244,6 @@ class Wave(IVPsystem2D, HomLinearIVP):
     def dfdt(self, t, f, laplacian: cached.CachedOperator)->np.ndarray:
         return np.array([f[1], laplacian.matrix(self.grid, t).dot(f[0])])
     
-    def solve(self, t, dt, method='RK4', err=0., max_frames=-1, display=True, acc=1, fd='central'):
-        x, (f, df) = IVPsystem2D.solve(self, t, dt, method, err, max_frames, display, acc, fd)
+    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
+        x, (f, df) = IVPsystem2D.solve(self, t, dt, method, rtol, max_frames, display, acc, fd)
         return x, f

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from numiphy.findiffs import grids
-from numiphy.odesolvers import ode_solvers as ods
+from numiphy.odesolvers import odes as ods
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sciopt
@@ -55,7 +55,7 @@ class VectorField2D:
         cdot = self.flowdot(line)
         return scint.quad(cdot, *line.lims, args=args, epsabs=1e-10)[0]
     
-    def streamline(self, x0, y0, s, ds=1e-3, err=1e-8, *args):
+    def streamline(self, x0, y0, s, ds=1e-3, *args, **odekw):
         '''
         Let F be a vector field.
         A field line R(s) passing through a point (x0, y0) satisfies the equation
@@ -67,7 +67,7 @@ class VectorField2D:
         which means dR/ds is the unit vector of the vector field at each point
         '''
         ics = (0, np.array([x0, y0]))
-        res = ods.PythonicODE(lambda s, q: self.unitvec(*q, *args)).solve(ics, s, ds, err=err).func
+        res = ods.LowLevelODE(lambda s, q: self.unitvec(*q, *args)).solve(ics, s, ds, **odekw).y
         return res.transpose()
         
     def loop(self, q, r, *args):

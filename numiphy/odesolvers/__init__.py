@@ -1,2 +1,2 @@
-from .ode_solvers import *
+from .odes import *
 from .orbits import *
