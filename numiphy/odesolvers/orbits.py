@@ -60,7 +60,8 @@ class Orbit(Template):
 
     def integrate(self, Delta_t, dt, **kwargs):
         if self.diverges or self.is_stiff:
-            return OdeResult(self.t[-1:], self.f[-1:, :], diverges=self.diverges, is_stiff=self.is_stiff, runtime=0.)
+            return None
+            # return OdeResult(self.t[-1:], self.f[-1:, :], diverges=self.diverges, is_stiff=self.is_stiff, runtime=0.)
         elif Delta_t<0 or dt<0:
             raise ValueError('Invalid Delta_t or dt inserted')
         elif Delta_t < dt:
@@ -97,6 +98,7 @@ class Orbit(Template):
             raise ValueError(f"The provided initial conditions have data shape {data.shape} instead of {(1, self.dof+1)}")
         self._set(data=data, diverges=False, is_stiff=False)
 
+from scipy.integrate import solve_ivp
 
 class VariationalOrbit(Orbit):
 

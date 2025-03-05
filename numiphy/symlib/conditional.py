@@ -7,8 +7,6 @@ import numpy as np
 from typing import Callable
 import numpy.typing as npt
 
-def _logical_neq(a, b)->np.ndarray[bool]:
-    return np.logical_not(a==b)
 
 class Boolean:
 

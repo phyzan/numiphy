@@ -2,11 +2,28 @@ from __future__ import annotations
 from ._lowlevelode import *
 
 from ..symlib import expressions as sym
+from ..symlib.conditional import *
 from ..toolkit import tools
 from functools import cached_property
 import tempfile
-from .odes import *
 import os
+
+# def argument_list(t: sym.Variable, *q:sym.Variable, ode_style=True)->str:
+#     res = f'const double& {t}, '
+#     if ode_style:
+#         x = [sym.Variable(f'q[{i}]') for i in range(len(q))]
+
+
+
+# class SymbolicEvent:
+
+#     def __init__(self, name, event: sym.Expr, check_if: Boolean):
+#         self.name = name
+#         self.event = event
+#         self.check = check_if
+
+#     def code(self, t: sym.Variable, *q: sym.Variable):
+
 
 
 class SymbolicOde:
