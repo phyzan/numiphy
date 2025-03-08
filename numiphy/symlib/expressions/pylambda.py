@@ -1,6 +1,153 @@
 from .symexpr import *
 import numpy as np
 import math, cmath
+from typing import Iterable
+from ..conditional import Boolean
+from ...toolkit import tools
+
+
+
+class ContainerLowLevel:
+
+    def __init__(self, array_type: str, *args: Variable):
+        self.array_type = array_type
+        self.args = args
+    
+    def as_argument(self, scalar_type: str, name: str):
+        return f'const {self.array_type}<{scalar_type}>& {name}'
+    
+    def map(self, array_name: str)->dict[Variable, Variable]:
+        return {self.args[i]: Variable(f'{array_name}[{i}]') for i in range(len(self.args))}
+    
+    def converted(self, expr: Expr):
+        return expr.replace(self.map())
+
+
+class FunctionLowLevel:
+
+    def __init__(self, *args: Variable, **containers: ContainerLowLevel):
+        self.args = args
+        self.containers = containers
+
+    def argument_list(self, scalar_type):
+        arglist = [f'const {scalar_type}& {x}' for x in self.args]
+        container_list = [self.containers[name].as_argument(scalar_type, name) for name in self.containers]
+        return ', '.join(arglist+container_list)
+
+    def code(self, name: str, scalar_type: str):
+        return f'{self.return_type(scalar_type)} {name}({self.argument_list(scalar_type)})'+'{\n\treturn '+f'{self.return_expression(scalar_type)};'+'\n}'
+
+    def return_expression(self, scalar_type: str)->str:...
+
+    def return_type(self, scalar_type: str)->str:...
+
+
+class BooleanLowLevel(FunctionLowLevel):
+
+    def __init__(self, expr: Boolean, *args: Variable, **containers: ContainerLowLevel):
+        self.expr = expr
+        super().__init__(*args, **containers)
+
+    def return_expression(self, scalar_type: str):
+        f = self.expr
+        for name in self.containers:
+            array = self.containers[name]
+            _map = array.map(name)
+            f = f.do("replace", _map)
+        return f.lowlevel_repr(scalar_type)
+    
+    def return_type(self, scalar_type: str):
+        return "bool"
+
+
+
+class ScalarLowlevel(FunctionLowLevel):
+
+    def __init__(self, expr: Expr, *args: Variable, **containers: ContainerLowLevel):
+        self.expr = expr
+        super().__init__(*args, **containers)
+
+    def return_expression(self, scalar_type: str):
+        f = self.expr
+        for name in self.containers:
+            f = self.containers[name].converted(name, f)
+        return f.lowlevel_repr(scalar_type)
+
+    def return_type(self, scalar_type: str):
+        return scalar_type
+
+
+class VectorLowLevel(FunctionLowLevel):
+
+    def __init__(self, array_type: str, array: Iterable[Expr], *args: Variable, **containers: ContainerLowLevel):
+        self.array_type = array_type
+        self.array = array
+
+        super().__init__(*args, **containers)
+
+    def return_expression(self):
+        r = ", ".join([self.containers[name].converted(name) for name in self.containers])
+        return '{'+r+'}'
+        
+    def return_type(self, scalar_type: str):
+        return f'{self.array_type}<{scalar_type}>'
+
+
+
+
+
+
+
+
+
+
+
+
+class SymbolicOde:
+
+    def __init__(self, ode_sys: Iterable[Expr], t: Variable, *q: Variable, args: Iterable[Variable]):
+        self.ode_sys = tuple(ode_sys)
+        self.args = tuple(args)
+        self.t = t
+        self.q = q
+
+        given = (t,)+q+args
+        assert tools.all_different(given)
+        odesymbols = []
+        for ode in ode_sys:
+            for arg in ode.variables:
+                if arg not in odesymbols:
+                    odesymbols.append(arg)
+        if len(ode_sys) != len(q):
+            raise ValueError('')
+        if t in odesymbols:
+            assert len(odesymbols) <= len(given)
+        else:
+            assert len(odesymbols) <= len(given) - 1
+
+    @property
+    def Nsys(self):
+        return len(self.ode_sys)
+
+    def ode_system(self, variational=False)->tuple[tuple[Expr, ...], tuple[Variable,...]]:
+        if not variational:
+            return self.ode_sys, self.q
+        else:
+            assert not any([x.name.startswith('delta_') for x in self.q+(self.t,)])
+            q = self.q
+            delq = [Variable('delta_'+qi.name) for qi in q]
+            n = len(self.ode_sys)
+            var_odesys = []
+            for i in range(n):
+                var_odesys.append(sum([self.ode_sys[i].diff(q[j])*delq[j] for j in range(n)]))
+            
+            odesys = self.ode_sys + tuple(var_odesys)
+            symbols = self.q + tuple(delq)
+            return odesys, symbols
+        
+    def lowlevel_code(self, stack=True, variational=False):
+        pass
+
 
 
 class CodeGenerator:
@@ -48,8 +195,7 @@ class CodeGenerator:
             else:
                 args = ', '.join([f"double {v}" for v in self.symbols+list(self.args)])
         return args
-
-        
+    
     def get_python(self, lib='math', ode_style=False):
 
         args = self._param_expr('python', ode_style, None)

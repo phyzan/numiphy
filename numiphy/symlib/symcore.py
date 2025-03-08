@@ -156,7 +156,9 @@ class _Expr:
         else:
             return self.init(*[arg for arg in self.args], simplify=True)#simply reinstanciate simplified, no need for makenew
 
-    def repr(self, lang="python", lib = "")->str:...
+    def repr(self, lib = "")->str:...
+
+    def lowlevel_repr(self, scalar_type="double")->str:...
 
     def get_ndarray(self, x: Dict[_Symbol, np.ndarray], **kwargs)->np.ndarray:...
 
@@ -181,11 +183,12 @@ class _Expr:
     def neg(self)->_Expr:
         return -self
 
-    def _repr_from(self, lang: str, lib: str, oper: Type[Operation])->str:
+    def _repr_from(self, arg: str, oper: Type[Operation], lowlevel=False)->str:
+        base = self.repr(arg) if not lowlevel else self.lowlevel_repr(arg)
         if oper.repr_priority <= self.repr_priority:
-            return f'{self.repr(lang, lib)}'
+            return base
         else:
-            return f'({self.repr(lang, lib)})'
+            return f'({base})'
 
     def replace(self, items: Dict[_Expr, _Expr])->_Expr:
         if self in items:
@@ -448,9 +451,11 @@ class Atom(_Expr):
     def init(self, *, simplify=True):
         return self.__class__(*self.Args)
 
-    def repr(self, lang="python", lib = "")->str:
+    def repr(self, lib = "")->str:
         return f'{self.Args[0]}'
 
+    def lowlevel_repr(self, scalar_type="double")->str:
+        return f'{self.Args[0]}'
 
 class Operation(Node):
 
@@ -538,8 +543,11 @@ class Operation(Node):
     @classmethod
     def matheval(cls, *args: float)->float:...
 
-    def repr(self, lang="python", lib = ""):
-        return self.binary.join([f._repr_from(lang, lib, self.__class__) for f in self.args])
+    def repr(self, lib = ""):
+        return self.binary.join([f._repr_from(lib, self.__class__) for f in self.args])
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return self.binary.join([f._repr_from(scalar_type, self.__class__, lowlevel=True) for f in self.args])
 
 
 class _Add(Operation):
@@ -607,15 +615,21 @@ class _Add(Operation):
     def matheval(cls, *args: float)->float:
         return sum(args)
     
-    def repr(self, lang="python", lib = ""):
-        res = self.args[0].repr(lang, lib)
+    def _remove_minus(self, func: str, _arg: str)->str:
+        res = getattr(self.args[0], func)(_arg)
         for arg in self.args[1:]:
-            r = arg.repr(lang, lib)
+            r: str = getattr(arg, func)(_arg)
             if r.startswith('-'):
                 res += ' - ' + r[1:]
             else:
-                res += ' + ' + arg.repr(lang, lib)
+                res += ' + ' + getattr(arg, func)(_arg)
         return res
+    
+    def repr(self, lib = ""):
+        return self._remove_minus("repr", lib)
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return self._remove_minus("lowlevel_repr", scalar_type)
     
     def expand(self):
         return self._add(*[arg.expand() for arg in self.args])
@@ -748,20 +762,27 @@ class _Mul(Operation):
     def matheval(cls, *args: float)->float:
         return math.prod(args)
     
-    def repr(self, lang="python", lib = ""):
+    def _remove_one(self, func: str, arg: str):
+        lowlevel = (func == "lowlevel_repr")
         num, den = self.numerator, self.denominator
         if den != 1:
             if den.repr_priority == self.repr_priority:
-                s = f'{num._repr_from(lang, lib, _Mul)}/({den._repr_from(lang, lib, _Mul)})'
+                s = f'{num._repr_from(arg, _Mul, lowlevel)}/({den._repr_from(arg, _Mul, lowlevel)})'
             else:
-                s = f'{num._repr_from(lang, lib, _Mul)}/{den._repr_from(lang, lib, _Mul)}'
+                s = f'{num._repr_from(arg, _Mul, lowlevel)}/{den._repr_from(arg, _Mul, lowlevel)}'
         else:
-            s = super().repr(lang, lib)
+            s = getattr(Operation, func)(self, arg)
         if s.startswith('-1*'):
             s = '-'+s[3:]
         elif  s.startswith('-1.*'):
             s = '-'+s[4:]
         return s
+
+    def repr(self, lib=""):
+        return self._remove_one("repr", lib)
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return self._remove_one("lowlevel_repr", scalar_type)
 
     def mulargs(self):
         return sum([arg.mulargs() for arg in self.args], start=())
@@ -811,18 +832,14 @@ class _Pow(Operation):
         else:
             return a, b
     
-    def repr(self, lang="python", lib = ""):
-        if lang == 'python':
-            if self.base.repr_priority == self.repr_priority:
-                return f'({self.base._repr_from(lang, lib, _Pow)})**{self.power._repr_from(lang, lib, _Pow)}'
-            else:
-                return super().repr(lang, lib)
-        elif lang == 'c++':
-            res = f"pow({self.base.repr(lang, lib)}, {self.power.repr(lang, lib)})"
-            if lib == "":
-                return res
-            else:
-                return f"{lib}::" + res
+    def repr(self, lib = ""):
+        if self.base.repr_priority == self.repr_priority:
+            return f'({self.base._repr_from(lib, _Pow)})**{self.power._repr_from(lib, _Pow)}'
+        else:
+            return super().repr(lib)
+
+    def lowlevel_repr(self, scalar_type="double"):
+        return f"pow({self.base.lowlevel_repr(scalar_type)}, {self.power.lowlevel_repr(scalar_type)})"
     
     @property
     def base(self):
@@ -877,11 +894,14 @@ class _Function(Atom):
     @property
     def _variables(self)->tuple[_Symbol,...]:...
 
-    def repr(self, lang="python", lib=""):
-        if lib != '' or lang != 'python':
+    def repr(self, lib=""):
+        if lib != '':
             raise NotImplementedError('_Function objects do not support representation with an external library')
         else:
             return f'{self.name}({", ".join([str(x) for x in self._variables])})'
+
+    def lowlevel_repr(self, scalar_type="double"):
+        raise NotImplementedError()
 
     def get_ndarray(self, x, **kwargs):
         raise NotImplementedError('')
@@ -971,11 +991,15 @@ class _Rational(_Number):
     def value(self)->int|float:
         return self.Args[0]/self.Args[1]
     
-    def repr(self, lang="python", lib=""):
-        if lang == "python":
-            return f'{self.n}/{self.d}'
-        else:
+    def repr(self, lib=""):
+        return f'{self.n}/{self.d}'
+        
+    def lowlevel_repr(self, scalar_type="double"):
+        if scalar_type == "double":
             return f'{self.n}./{self.d}.'
+        else:
+            T = scalar_type if " " not in scalar_type else f'({scalar_type})'
+            return f'{T}({self.n})/{T}({self.d})'
     
     def mulargs(self):
         if isinstance(self, _Integer):
@@ -991,11 +1015,11 @@ class _Integer(_Rational):
     def __new__(cls, m):
         return _Rational.__new__(cls, m, 1)
 
-    def repr(self, lang="python", lib=""):
-        if lang == "python":
-            return f'{self.value}'
-        else:
-            return f'{self.value}.'
+    def repr(self, lib=""):
+        return f'{self.value}'
+
+    def lowlevel_repr(self, scalar_type="double"):
+        return f'{self.value}'
 
     @property
     def value(self)->int|float:
@@ -1019,11 +1043,14 @@ class _Special(_Number):
     def value(self)->float:
         return self.Args[1]
 
-    def repr(self, lang="python", lib=""):
+    def repr(self, lib=""):
         if lib == '':
             return self.name
         else:
             return f'{lib}.{self.name}'
+        
+    def lowlevel_repr(self, scalar_type="double"):
+        return self.name
 
 
 class _Complex(_Number):
@@ -1050,19 +1077,14 @@ class _Complex(_Number):
     def value(self)->complex:
         return self.real + 1j*self.imag
 
-    def repr(self, lang="python", lib=""):
-        if lang == "python":
-            if self.real == 0:
-                return f'{self.imag}j'
-            else:
-                return f'({self.real}+{self.imag}j)'
-        elif lang == "c++":
-            assert lib == "" or lib == "std"
-            res = f"complex<double>({self.real}, {self.imag})"
-            if lib == "":
-                return res
-            else:
-                return f"{lib}::" + res
+    def repr(self, lib=""):
+        if self.real == 0:
+            return f'{self.imag}j'
+        else:
+            return f'({self.real}+{self.imag}j)'
+            
+    def lowlevel_repr(self, scalar_type="double"):
+        return f"complex<{scalar_type}>({self.real}, {self.imag})"
 
 
 class _Symbol(Atom):
@@ -1134,11 +1156,14 @@ class _Subs(Node):
     def init(self, expr, simplify=True):
         return self._subs(expr, self.vals.copy(), simplify=simplify)
 
-    def repr(self, lang="python", lib=""):
-        if lib != '' or lang != 'python':
-            raise NotImplementedError
+    def repr(self, lib=""):
+        if lib != '':
+            raise NotImplementedError()
         else:
             return f'Subs({self.expr}, {self.vals})'
+        
+    def lowlevel_repr(self, scalar_type="double"):
+        raise NotImplementedError()
         
     def doit(self, deep=True):
         if deep:
@@ -1252,12 +1277,15 @@ class _Derivative(Node):
     def _equals(self, other: _Derivative):
         return self.f == other.f and self.diffcount == other.diffcount
     
-    def repr(self, lang="python", lib=""):
-        if lib != '' or lang != 'python':
+    def repr(self, lib=""):
+        if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated derivatives')
         else:
             v = [str(x) for x in self.newvars(self.diffcount)]
             return f"{self.__class__.__name__}({self.f}, {', '.join(v)})"
+        
+    def lowlevel_repr(self, scalar_type="double"):
+        raise NotImplementedError
 
     def get_ndarray(self, x, **kwargs):
         acc = kwargs.get('acc', 1)
@@ -1360,11 +1388,14 @@ class _Integral(Node):
     def neg(self):
         return self.init(-self.f)
     
-    def repr(self, lang="python", lib=""):
-        if lib != '' or lang != 'python':
+    def repr(self, lib=""):
+        if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated integrals')
         else:
             return f'{self.__class__.__name__}({self.f}, {self.symbol}, {self.x0})'
+        
+    def lowlevel_repr(self, scalar_type="double"):
+        raise NotImplementedError()
 
     def get_ndarray(self, x, **kwargs):
         r = x[self.symbol]
@@ -1603,16 +1634,16 @@ class _Piecewise(Node):
             res.append(self.Args[i][1].elementwise_eval(x, **kwargs))
         return tuple(res)
     
-    def repr(self, lang="python", lib=""):
-        if lang == 'python':
-            if lib == '':
-                return f"{self.__class__.__name__}({', '.join([str(i) for i in self.Args])})"
-            elif lib == 'numpy':
-                return f'numpy.where({self.Args[0][1].repr(lang, lib)}, {self.Args[0][0].repr(lang, lib)}, {self.__class__(*self.Args[1:]).repr(lang, lib)})'
-            else:
-                return f'({self.Args[0][0].repr(lang, lib)} if {self.Args[0][1].repr(lang, lib)} else ({self.__class__(*self.Args[1:]).repr(lang, lib)}))'
-        elif lang == 'c++':
-            return f"(({self.Args[0][1].repr(lang, lib)}) ? {self.Args[0][0].repr(lang, lib)} : {self.__class__(*self.Args[1:]).repr(lang, lib)})"
+    def repr(self, lib=""):
+        if lib == '':
+            return f"{self.__class__.__name__}({', '.join([str(i) for i in self.Args])})"
+        elif lib == 'numpy':
+            return f'numpy.where({self.Args[0][1].repr(lib)}, {self.Args[0][0].repr(lib)}, {self.__class__(*self.Args[1:]).repr(lib)})'
+        else:
+            return f'({self.Args[0][0].repr(lib)} if {self.Args[0][1].repr(lib)} else ({self.__class__(*self.Args[1:]).repr(lib)}))'
+
+    def lowlevel_repr(self, scalar_type="double"):
+        return f"(({self.Args[0][1].lowlevel_repr(scalar_type)}) ? {self.Args[0][0].lowlevel_repr(scalar_type)} : {self.__class__(*self.Args[1:]).lowlevel_repr(scalar_type)})"
         
     def get_ndarray(self, x, **kwargs):
         bools = self._elementwise_boolean(x, **kwargs)

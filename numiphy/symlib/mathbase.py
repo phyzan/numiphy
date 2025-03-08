@@ -26,21 +26,18 @@ class _Mathfunc(Node):
         else:
             return getattr(math, cls.name)(value)
 
-    def repr(self, lang="python", lib=""):
-        if lang == 'python' and lib == '':
-            return f'{self.__class__.__name__}({self.Arg.repr(lang, lib)})'
+    def repr(self, lib=""):
+        if lib == '':
+            return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
         
-        base = f"{self.name}({self.Arg.repr(lang, lib)})"
-        if lang == 'python':
-            if lib == 'math' and self.contains_type(_Complex):
-                return 'cmath.'+base
-            else:
-                return f'{lib}.{base}'
-        elif lang == 'c++':
-            if lib == '':
-                return base
-            else:
-                return f'{lib}::'+base
+        base = f"{self.name}({self.Arg.repr(lib)})"
+        if lib == 'math' and self.contains_type(_Complex):
+            return 'cmath.'+base
+        else:
+            return f'{lib}.{base}'
+            
+    def lowlevel_repr(self, scalar_type='double'):
+        return f"{self.name}({self.Arg.lowlevel_repr(scalar_type)})"
 
     def _diff_unchained(self)->_Expr:...
 
@@ -200,12 +197,8 @@ class _Abs(_Mathfunc):
     def _diff(self, var):
         return self._derivative(self, var)
 
-    def repr(self, lang="python", lib=""):
-        base = f'abs({self.Arg.repr(lang, lib)})'
-        if lang == 'python' or lib == '':
-            return base
-        elif lang == 'c++':
-            return f'{lib}::'+base
+    def repr(self, lib=""):
+        return f'abs({self.Arg.repr(lib)})'
 
     @classmethod
     def eval_at(cls, value):
@@ -229,14 +222,11 @@ class _Real(_Mathfunc):
     def is_complex(self):
         return False
     
-    def repr(self, lang="python", lib=""):
-        if lang == 'python':
-            if lib != '':
-                return f'({self.Arg.repr(lang, lib)}).real'
-            else:
-                return f'{self.__class__.__name__}({self.Arg.repr(lang, lib)})'
-        elif lang == 'c++':
-            return f'{lib}::real({self.Arg.repr(lang, lib)})'
+    def repr(self, lib=""):
+        if lib != '':
+            return f'({self.Arg.repr(lib)}).real'
+        else:
+            return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
         
     def _diff(self, var):
         return self.init(self.Arg._diff(var))
@@ -263,14 +253,11 @@ class _Imag(_Mathfunc):
     def is_complex(self):
         return False
     
-    def repr(self, lang="python", lib=""):
-        if lang == 'python':
-            if lib != '':
-                return f'({self.Arg.repr(lang, lib)}).imag'
-            else:
-                return f'{self.__class__.__name__}({self.Arg.repr(lang, lib)})'
-        elif lang == 'c++':
-            return f'{lib}::imag({self.Arg.repr(lang, lib)})'
+    def repr(self, lib=""):
+        if lib != '':
+            return f'({self.Arg.repr(lib)}).imag'
+        else:
+            return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
         
     def _diff(self, var):
         return self.init(self.Arg._diff(var))

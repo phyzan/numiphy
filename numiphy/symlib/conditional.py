@@ -37,7 +37,9 @@ class Boolean:
     def __invert__(self):
         return Not(self)
 
-    def repr(self, lang="python", lib="")->str:...
+    def repr(self, lib="")->str:...
+
+    def lowlevel_repr(self, scalar_type="double")->str:...
 
     def elementwise_eval(self, x: Dict[_Symbol, np.ndarray], **kwargs)->np.ndarray[bool]:...
 
@@ -67,14 +69,17 @@ class Comparison(Boolean):
     @property
     def b(self):
         return self.Args[1]
-    
-    def repr(self, lang="python", lib=""):
-        if lang == 'python' and lib == '':
+
+    def repr(self, lib="")->str:
+        if lib == '':
             if isinstance(self, (Eq, Neq)):
                 return f'{self.__class__.__name__}({self.a}, {self.b})'
             else:
                 return f'{self.a} {self.operator} {self.b}'
-        return f'{self.a.repr(lang, lib)} {self.operator} {self.b.repr(lang, lib)}'
+        return f'{self.a.repr(lib)} {self.operator} {self.b.repr(lib)}'
+
+    def lowlevel_repr(self, scalar_type="double"):
+        return f'{self.a.lowlevel_repr(scalar_type)} {self.operator} {self.b.lowlevel_repr(scalar_type)}'
 
     @classmethod
     def evaluate(cls, a: float, b: float)->bool:...
@@ -115,9 +120,11 @@ class Logical(Boolean):
     def right(self):
         return self.Args[1]
     
-    def repr(self, lang="python", lib=""):
-        op = self.operator if lang=='python' else self.cpp_op
-        return f'({self.left.repr(lang, lib)}) {op} ({self.right.repr(lang, lib)})'
+    def repr(self, lib=""):
+        return f'({self.left.repr(lib)}) {self.operator} ({self.right.repr(lib)})'
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return f'({self.left.lowlevel_repr(scalar_type)}) {self.cpp_op} ({self.right.lowlevel_repr(scalar_type)})'
 
     def elementwise_eval(self, x, **kwargs):
         left = self.left.elementwise_eval(x, **kwargs)
@@ -144,9 +151,11 @@ class Not(Boolean):
         obj.arg = arg
         return obj
 
-    def repr(self, lang="python", lib=""):
-        op = self.operator+' ' if lang == 'python' else '!'
-        return f'{op}({self.arg.repr(lang, lib)})'
+    def repr(self, lib=""):
+        return f'({self.operator} ({self.arg.repr(lib)}))'
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return f'!({self.arg.lowlevel_repr(scalar_type)})'
     
     def elementwise_eval(self, x, **kwargs):
         arr = self.arg.elementwise_eval(x, **kwargs)

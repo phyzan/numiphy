@@ -1,5 +1,5 @@
 from __future__ import annotations
-from ._lowlevelode import *
+from .odepack import *
 
 from ..symlib import expressions as sym
 from ..symlib.conditional import *
@@ -7,23 +7,6 @@ from ..toolkit import tools
 from functools import cached_property
 import tempfile
 import os
-
-# def argument_list(t: sym.Variable, *q:sym.Variable, ode_style=True)->str:
-#     res = f'const double& {t}, '
-#     if ode_style:
-#         x = [sym.Variable(f'q[{i}]') for i in range(len(q))]
-
-
-
-# class SymbolicEvent:
-
-#     def __init__(self, name, event: sym.Expr, check_if: Boolean):
-#         self.name = name
-#         self.event = event
-#         self.check = check_if
-
-#     def code(self, t: sym.Variable, *q: sym.Variable):
-
 
 
 class SymbolicOde:
@@ -96,7 +79,7 @@ class SymbolicOde:
             raise RuntimeError(f'Directory "{directory}" does not exist')
         code = self.codegen(variational).get_cpp(ode_style=True, stack=stack)
         cpp_code = f'#include <odepack/pyode.hpp>\n\n{code}\n\n'
-        cpp_code += f"PYBIND11_MODULE({module_name}, m){{\ndefine_lowlevel_ode(m, MyFunc);\n}}"
+        cpp_code += f"PYBIND11_MODULE({module_name}, m){{\ndefine_ode_module(m);\n\n}}"
         cpp_file = os.path.join(directory, f"{module_name}.cpp")
 
         with open(cpp_file, "w") as f:
