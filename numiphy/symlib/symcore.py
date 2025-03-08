@@ -71,7 +71,7 @@ class _Expr:
         return str(self)
 
     def __str__(self):
-        return self.repr(lang='python', lib='')
+        return self.repr(lib='')
     
     def __hash__(self):
         return 1 # hashing must be determined by equality

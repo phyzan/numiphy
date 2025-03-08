@@ -1,6 +1,6 @@
 from __future__ import annotations
 from numiphy.findiffs import grids
-from numiphy.odesolvers import odes as ods
+# from numiphy.odesolvers import odes as ods
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sciopt
