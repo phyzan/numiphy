@@ -200,8 +200,8 @@ class VectorLambdaExpr:
     def __init__(self, expr: list, *symbols: Variable):
         self.expr = expr
         self.symbols = symbols
-        self.code = f"np.array({_multidim_lambda_list(expr)})"
-        self._callable = multidim_lambda_func(expr, *symbols)
+        self.code = f"np.array({_multidim_lambda_list(expr, lib="math")})"
+        self._callable = lambdify(*expr, symbols=symbols, lib="numpy")
 
     def __call__(self, *args)->np.ndarray:
         return self._callable(*args)
