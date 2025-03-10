@@ -97,25 +97,8 @@ class Expr(_Expr):
     def _dummy(cls, arr, grid, *vars):
         return DummyScalarField(arr, grid, *vars)
 
-    def write_as_ode(self, lang: str, lib: str, symbols: list[Variable], tvar: str, qvar: str, args: tuple[Variable, ...]=())->str:
-        assert tvar!='args' and qvar!='args'
-        sub = {symbols[0]: Variable(tvar)}
-        
-        for i in range(1, len(symbols)):
-            newvar = Variable(f'{qvar}[{i-1}]')
-            sub[symbols[i]] = newvar
-        
-        extras = {}
-        if lang != 'python':
-            for i in range(len(args)):
-                extras[args[i]] = Variable(f'args[{i}]')
-        
-        sub.update(extras)
-        expr = self.replace(sub)
-        return expr.repr(lang, lib)
-
-    def lambdify(self, varnames, lib='math', ode_style=False):
-        return lambdify(self, symbols=varnames, lib=lib, ode_style=ode_style)
+    def lambdify(self, varnames, lib='math'):
+        return lambdify(self, symbols=varnames, lib=lib)
 
     def powsimp(self):
         return powsimp(self)

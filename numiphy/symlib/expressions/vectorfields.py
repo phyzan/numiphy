@@ -1,13 +1,13 @@
 from __future__ import annotations
 from numiphy.findiffs import grids
-# from numiphy.odesolvers import odes as ods
+from numiphy.odesolvers.odepack import LowLevelODE
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sciopt
 import scipy.integrate as scint
 from numiphy.symlib import expressions as sym
 from numiphy.symlib.geom import Line2D, Circle
-        
+
 
 class VectorField2D:
 
@@ -66,8 +66,7 @@ class VectorField2D:
         dR/ds = F(R) / |F(R)|
         which means dR/ds is the unit vector of the vector field at each point
         '''
-        ics = (0, np.array([x0, y0]))
-        res = ods.LowLevelODE(lambda s, q: self.unitvec(*q, *args)).solve(ics, s, ds, **odekw).y
+        res = LowLevelODE(lambda s, q: self.unitvec(*q, *args), 0, np.array[x0, y0], ds, **odekw).q
         return res.transpose()
         
     def loop(self, q, r, *args):
