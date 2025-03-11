@@ -243,3 +243,11 @@ def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Variable, q: Iterable[Varia
         
         new_sys = ode_sys + tuple(var_odesys)
         return OdeSystem(new_sys, t, *q, *delq, args=args, events=events, stop_events=stop_events)
+
+
+def load_ode_data(filedir: str)->tuple[np.ndarray[int], np.ndarray, np.ndarray]:
+    data = np.loadtxt(filedir)
+    events = data[:, 0].astype(int)
+    t = data[:, 1].copy()
+    q = data[:, 2:].copy()
+    return events, t, q
