@@ -1,14 +1,45 @@
 import os
 import sys
 from setuptools import setup, find_packages
+from setuptools.command.install import install
+import tempfile
+import importlib
 
 # Check if the C++ headers are installed
+
+class CustomInstall(install):
+    def run(self):
+
+        package_dir = self.build_lib
+        target_dir = os.path.join(package_dir, "numiphy", "odesolvers")
+        odepack_name = "odepack"
+        code = f'#include <odepack/pyode.hpp>\n\nPYBIND11_MODULE({odepack_name}, m)'+'{\n\tdefine_ode_module<double, vec<double>>(m);\n}'
+
+        tools_path = os.path.join(package_dir, "numiphy", "toolkit", "compile_tools.py")
+        module_name = os.path.splitext(os.path.basename(tools_path))[0]  # e.g., "my_script"
+
+        # Load the module dynamically
+        spec = importlib.util.spec_from_file_location(module_name, tools_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+        # Now import the specific function
+        compile = module.compile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cpp_temp_path = os.path.join(temp_dir, f"{odepack_name}.cpp")
+            with open(cpp_temp_path, "w") as f:
+                f.write(code)
+            compile(cpp_temp_path, target_dir, odepack_name)
+        super().run()
+
 odepack_installed = os.path.exists("/usr/include/odepack")  # Change path if needed
 
 if not odepack_installed:
     print("\nERROR: The 'odepack' C++ library is not installed!")
     print("Please install it manually by running:")
-    print("\n    git clone https://github.com/phyzan/odepack && cd odepack && chmod +x install.sh\n")
+    print("git clone https://github.com/phyzan/odepack && cd odepack && chmod +x install.sh\n")
     sys.exit(1)
 
 setup(
@@ -27,4 +58,5 @@ setup(
         "pybind11==2.13.6",
         "joblib==1.4.2"
     ],
+    cmdclass={"install": CustomInstall},
 )

@@ -4,7 +4,7 @@ from ..symlib.conditional import Boolean
 from ..toolkit import tools
 import os
 import tempfile
-from .odepack import *
+from .odepack import * # type: ignore
 from functools import cached_property
 from ..symlib.expressions.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable
 import pybind11 #imported only to to raise error if it does not exist. It is needed for the compiler
