@@ -31,7 +31,7 @@ class _LowLevelCallable(_CallableFunction):
         return self._code(name, self.return_id(scalar_type), self.argument_list(scalar_type), self.core_impl(scalar_type=scalar_type))
     
     def lambda_code(self, scalar_type):
-        return f'[]({self.argument_list(scalar_type)}) -> {self.return_id(scalar_type)} ' + '{' +f'{self.core_impl(scalar_type)};'+'}'
+        return f'[]({self.argument_list(scalar_type)}) -> {self.return_id(scalar_type)} ' + '{' +f'{self.core_impl(scalar_type)}'+'}'
     
 
 class BooleanLowLevelCallable(_BooleanCallable, _LowLevelCallable):
@@ -83,20 +83,21 @@ class _SymbolicEvent:
 
 class SymbolicEvent(_SymbolicEvent):
 
-    def __init__(self, name: str, event: Expr, check_if: Boolean=None, period: float=0, start: float=0, mask: Iterable[Expr]=None):
+    def __init__(self, name: str, event: Expr, check_if: Boolean=None, period: float=0, start: float=0, mask: Iterable[Expr]=None, hide_mask=False):
         self.name = name
         self.event = event
         self.check_if = check_if
         self.mask = mask
         self.period = period
         self.start = start
+        self.hide_mask = hide_mask
 
     def code(self, scalar_type, t, *q, args, stack=True):
         res , arg_list = super()._code(scalar_type, t, *q, args=args, stack=stack)
         mask = "nullptr"
         if self.mask is not None:
             mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
-        return res + f', {self.period}, {self.start}, {mask})'
+        return res + f', {self.period}, {self.start}, {mask}, {"true" if self.hide_mask else "false"})'
 
 
 class SymbolicStopEvent(_SymbolicEvent):
