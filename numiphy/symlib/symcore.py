@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 from ..findiffs import grids
 from ..findiffs.grids import InterpedArray
 from ..toolkit import tools
@@ -1434,6 +1435,13 @@ class _ScalarField(_Function):
 
         self.Args = (ndarray.copy(), grid, name, *vars)
 
+    def __call__(self, *args):
+        if hasattr(args[0], '__iter__'):
+            return self.interpolator(args, method="cubic")
+        else:
+            args = [np.array([arg]) for arg in args]
+            return self.interpolator(args, method="cubic")[0]
+        
     @property
     def _ndarray(self)->np.ndarray:
         return self.Args[0]
@@ -1454,11 +1462,18 @@ class _ScalarField(_Function):
     def ndim(self)->int:
         return self.grid.nd
     
+    @cached_property
+    def interpolator(self):
+        return RegularGridInterpolator(self.grid.x, self._ndarray, method="cubic")
+    
     def to_dummy(self):
         return self._dummy(self._ndarray, self.grid, *self._variables)
 
     def _equals(self, other: _ScalarField):
-        return np.all(self._ndarray == other._ndarray) and self.Args[1:] == other.Args[1:]
+        if not (other is self):
+            return np.all(self._ndarray == other._ndarray) and self.Args[1:] == other.Args[1:]
+        else:
+            return True
 
     def as_interped_array(self):
         return InterpedArray(self._ndarray, self.grid)
@@ -1555,7 +1570,7 @@ class _DummyScalarField(_ScalarField):
         return self.Args[2:]
 
     def _equals(self, other):
-        return False
+        return other is self
 
     def _diff(self, var, acc=1, fd='central'):
         return self.diff(var, order=1, acc=acc, fd=fd)

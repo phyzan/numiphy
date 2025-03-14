@@ -651,15 +651,21 @@ class InterpedArray:
         return plot(self.ndarray(grid), grid, ax, **kwargs)
     
 
-def UniformGrid(shape: tuple[int], limits: tuple[list[float]], periodic: tuple[bool]):
+def UniformGrid(shape: tuple[int], limits: tuple[list[float]], periodic: tuple[bool]=None):
+    if periodic is None:
+        periodic = len(x)*[False]
     grids = [Uniform1D(*limits[i], shape[i], periodic[i]) for i in range(len(shape))]
     return NdGrid(*grids)
 
-def LogarithmicGrid(shape: tuple[int], limits: tuple[list[float]], periodic: tuple[bool]):
+def LogarithmicGrid(shape: tuple[int], limits: tuple[list[float]], periodic: tuple[bool]=None):
+    if periodic is None:
+        periodic = len(x)*[False]
     grids = [Logarithmic1D(*limits[i], shape[i], periodic[i]) for i in range(len(shape))]
     return NdGrid(*grids)
 
-def UnstructuredGrid(*x, periodic: tuple[bool]):
+def UnstructuredGrid(*x, periodic: tuple[bool]=None):
+    if periodic is None:
+        periodic = len(x)*[False]
     grids = [Unstructured1D(x[i], periodic[i]) for i in range(len(x))]
     return NdGrid(*grids)
 
