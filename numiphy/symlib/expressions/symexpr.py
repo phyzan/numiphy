@@ -33,13 +33,13 @@ class Expr(_Expr):
     def _asexpr(cls, arg)->Expr:
         if isinstance(arg, Expr):
             return arg
-        elif type(arg) is int:
-            return Integer(arg)
-        elif type(arg) is float:
+        elif isinstance(arg, int):
+            return Integer(int(arg))
+        elif isinstance(arg, float):
             if arg == int(arg):
                 return Integer(int(arg))
             else:
-                return Float(arg)
+                return Float(float(arg))
         elif type(arg) is complex:
             return Complex(arg.real, arg.imag)
         else:

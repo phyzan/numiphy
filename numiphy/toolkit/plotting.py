@@ -160,6 +160,8 @@ class Project:
         return os.path.join(self.folder, 'figures')
     
     def savefig(self, fig: Figure):
+        fig = fig.copy()
+        fig.set(**self.figparams)
         fig.save(self.fig_folder)
         fig.savedata(self.data_folder)
 
@@ -173,7 +175,6 @@ class Project:
     def redo_all(self):
         figs = self.load_saved_figs()
         for fig in figs:
-            fig.set(**self.figparams)
             self.savefig(fig)
 
     def load_saved_figs(self):
@@ -201,7 +202,7 @@ class Figure:
     ftype: str
     dpi: int
     figsize: tuple[float, float]
-    grid: bool
+    grid: dict
     aspect: str
 
     xlims: tuple[float, float]
@@ -263,17 +264,17 @@ class Figure:
     def savedata(self, folder):
         file = os.path.join(folder, self.name)
         artdata = [(artist.__class__.__name__, artist.kwargs) for artist in self._artists]
-        tools.write_binary_data(file, [self.parameters, artdata])
+        tools.write_binary_data(file, [self.__class__.__name__, self.parameters, artdata])
 
-    @classmethod
-    def load(cls, folder, name):
+    @staticmethod
+    def load(folder, name):
         path = os.path.join(folder, name)
-        params, artdata = tools.try_read(path, error=True)
+        cls, params, artdata = tools.try_read(path, error=True)
         artists: list[Artist] = []
         for cl, data in artdata:
             artists.append(eval(cl)(**data))
         
-        fig = cls(name, **params)
+        fig: Figure = eval(cls)(name, **params)
         fig._artists = artists
         return fig
     

@@ -172,7 +172,7 @@ def lambdify(*expr: Expr, symbols: list[Variable], lib='math'):
     if len(expr) == 1:
         code = ScalarPythonCallable(*expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
     else:
-        code = VectorPythonCallable("numpy.array", expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
+        code = VectorPythonCallable("numpy.ndarray", expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
     glob_vars = {"numpy": np, "math": math, "cmath": cmath}
     exec(code, glob_vars)
     return glob_vars['MyFunc']

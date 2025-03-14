@@ -36,13 +36,13 @@ class Operator(_Expr):
     def _asexpr(cls, arg)->Operator:
         if isinstance(arg, Operator):
             return arg
-        elif type(arg) is int:
-            return IntegerOp(arg)
-        elif type(arg) is float:
+        elif isinstance(arg, int):
+            return IntegerOp(int(arg))
+        elif isinstance(arg, float):
             if arg == int(arg):
                 return IntegerOp(int(arg))
             else:
-                return FloatOp(arg)
+                return FloatOp(float(arg))
         elif type(arg) is complex:
             return ComplexOp(arg.real, arg.imag)
         else:
