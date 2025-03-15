@@ -4,7 +4,7 @@ import subprocess
 def compile(cpp_path, so_dir, module_name, no_math_errno=False):
 
     if not os.path.exists(cpp_path):
-        raise RuntimeError(f"CPP file path does not exist")
+        raise RuntimeError(f"CPP file path does not exist: {cpp_path}")
     
     if not os.path.exists(so_dir):
         raise RuntimeError(f"Cannot compile ode at {so_dir}: Path does not exist")

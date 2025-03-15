@@ -38,8 +38,8 @@ odepack_installed = os.path.exists("/usr/include/odepack")  # Change path if nee
 
 if not odepack_installed:
     print("\nERROR: The 'odepack' C++ library is not installed!")
-    print("Please install it manually by running:")
-    print("git clone https://github.com/phyzan/odepack && cd odepack && chmod +x install.sh\n")
+    print("Please install it manually:")
+    print("https://github.com/phyzan/odepack\n")
     sys.exit(1)
 
 setup(
