@@ -204,7 +204,9 @@ class OdeSystem:
         if len(args) != len(self.args):
             raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
         params = (t0, q0, stepsize, rtol, atol, min_step, args, method, event_tol, savedir, save_events_only)
-        return self._compiled_odes.get((stack, no_math_errno, fast_math, scalar_type), self._ode_generator(stack=stack, no_math_errno=no_math_errno, fast_math=fast_math))(*params)
+        if (stack, no_math_errno, fast_math, scalar_type) not in self._compiled_odes:
+            self._ode_generator(stack=stack, no_math_errno=no_math_errno, fast_math=fast_math)
+        return self._compiled_odes[(stack, no_math_errno, fast_math, scalar_type)](*params)
     
     def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, display=False)->list[LowLevelODE]:
         return self._int_all_func(odes, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, display=display)
