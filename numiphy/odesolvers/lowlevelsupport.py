@@ -65,6 +65,8 @@ class VectorLowLevelCallable(_VectorCallable, _LowLevelCallable):
 
 class _SymbolicEvent:
 
+    _cls: str
+
     def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None):
         self.name = name
         self.event = event
@@ -78,10 +80,12 @@ class _SymbolicEvent:
         checkif = "nullptr"
         if self.check_if is not None:
             checkif = BooleanLowLevelCallable(self.check_if, t, **arg_list).lambda_code(scalar_type)
-        return f'Event<{scalar_type}, {_vec(stack)}<{scalar_type}>>("{self.name}", {lambda_code}, {checkif}', arg_list
+        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>>("{self.name}", {lambda_code}, {checkif}', arg_list
 
 
 class SymbolicEvent(_SymbolicEvent):
+
+    _cls = "Event"
 
     def __init__(self, name: str, event: Expr, check_if: Boolean=None, period: float=0, start: float=0, mask: Iterable[Expr]=None, hide_mask=False):
         self.name = name
@@ -102,6 +106,8 @@ class SymbolicEvent(_SymbolicEvent):
 
 class SymbolicStopEvent(_SymbolicEvent):
 
+    _cls = "StopEvent"
+
     def __init__(self, name: str, event: Expr, check_if: Boolean=None):
         self.name = name
         self.event = event
@@ -119,6 +125,7 @@ class OdeSystem:
 
     _counter = 0
     _int_all_func = None
+    _compiled_odes: dict[tuple, LowLevelODE] = dict()
 
     def __init__(self, ode_sys: Iterable[Expr], t: Variable, *q: Variable, args: Iterable[Variable] = (), events: Iterable[SymbolicEvent]=(), stop_events: Iterable[SymbolicStopEvent]=()):
         self.ode_sys = tuple(ode_sys)
@@ -185,54 +192,35 @@ class OdeSystem:
 
         return os.path.join(directory, f'{module_name}.cpp')
 
-    def compile(self, directory: str, module_name, stack=True, no_math_errno=False, scalar_type="double"):
+    def compile(self, directory: str, module_name, stack=True, no_math_errno=False, fast_math=False, scalar_type="double"):
         if not os.path.exists(directory):
             raise RuntimeError(f"Cannot compile ode at {directory}: Path does not exist")
         
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack, scalar_type=scalar_type)
-            tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno)
+            tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, fast_math=fast_math)
 
-    def get(self, t0: float, q0: np.ndarray, stepsize=1e-3, rtol=1e-6, atol=1e-12, min_step=0., args=(), method="RK45", event_tol=1e-12, stack=True, no_math_errno=False, savedir="", save_events_only=False)->LowLevelODE:
+    def get(self, t0: float, q0: np.ndarray, stepsize=1e-3, rtol=1e-6, atol=1e-12, min_step=0., args=(), method="RK45", event_tol=1e-12, stack=True, no_math_errno=False, fast_math=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
+        if len(args) != len(self.args):
+            raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
         params = (t0, q0, stepsize, rtol, atol, min_step, args, method, event_tol, savedir, save_events_only)
-        return self.ode_map(stack=stack, no_errno=no_math_errno)(*params)
+        return self._compiled_odes.get((stack, no_math_errno, fast_math, scalar_type), self._ode_generator(stack=stack, no_math_errno=no_math_errno, fast_math=fast_math))(*params)
     
     def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, display=False)->list[LowLevelODE]:
-        self._int_all_func(odes, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, display=display)
-        
-    def _ode_generator(self, stack=True, no_math_errno=False):
+        return self._int_all_func(odes, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, display=display)
+    
+    def _ode_generator(self, stack=True, no_math_errno=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
         modname = self.module_name
 
         with tempfile.TemporaryDirectory() as so_dir:
-            self.compile(so_dir, modname, stack=stack, no_math_errno=no_math_errno)
+            self.compile(so_dir, modname, stack=stack, no_math_errno=no_math_errno, fast_math=fast_math, scalar_type=scalar_type)
             temp_module = tools.import_lowlevel_module(so_dir, modname)
 
         self.__class__._counter += 1
         if stack and self._int_all_func is None:
             self._int_all_func = temp_module.integrate_all
+        self._compiled_odes[(stack, no_math_errno, fast_math, scalar_type)] = temp_module.get_ode
         return temp_module.get_ode
-    
-    @cached_property
-    def _lowlevel_heap(self):
-        return self._ode_generator(stack=False, no_math_errno=False)
-
-    @cached_property
-    def _lowlevel_heap_noerrno(self):
-        return self._ode_generator(stack=False, no_math_errno=True)
-    
-    @cached_property
-    def _lowlevel_stack(self):
-        return self._ode_generator(stack=True, no_math_errno=False)
-
-    @cached_property
-    def _lowlevel_stack_noerrno(self):
-        return self._ode_generator(stack=True, no_math_errno=True)
-
-    
-    def ode_map(self, stack, no_errno)->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
-        _map = [ ['_lowlevel_heap', '_lowlevel_heap_noerrno'],
-                 ['_lowlevel_stack', '_lowlevel_stack_noerrno']]
-        return getattr(self, _map[stack][no_errno])
 
 
 def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Variable, q: Iterable[Variable], delq: Iterable[Variable], args: Iterable[Variable] = (), events: Iterable[SymbolicEvent]=(), stop_events: Iterable[SymbolicStopEvent]=()):

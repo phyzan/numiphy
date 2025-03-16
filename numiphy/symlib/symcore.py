@@ -1020,10 +1020,14 @@ class _Integer(_Rational):
         return f'{self.value}'
 
     def lowlevel_repr(self, scalar_type="double"):
-        return f'{self.value}'
+        if scalar_type == "double":
+            return f'{self.value}.'
+        else:
+            T = scalar_type if " " not in scalar_type else f'({scalar_type})'
+            return f'{T}({self.value})'
 
     @property
-    def value(self)->int|float:
+    def value(self)->int:
         return self.Args[0]
 
     @property
