@@ -172,7 +172,7 @@ class OdeSystem:
     def ode_generator_code(self, stack=True, scalar_type="double"):
         Tt = scalar_type
         Ty = _vec(stack) + f"<{scalar_type}>"
-        line1 = f"PyODE<{Tt}, {Ty}> GetOde(const {Tt}& t0, py::array q0, const {Tt}& stepsize, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, py::tuple args, py::str method, const {Tt}& event_tol, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
+        line1 = f"PyODE<{Tt}, {Ty}> GetOde(const {Tt}& t0, py::array q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, const {Tt}& event_tol, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
         event_block = ''
         event_array = []
         for i in range(len(self.events)):
@@ -180,7 +180,7 @@ class OdeSystem:
             event_block += self.events[i].init_code(ev_name, scalar_type, self.t, *self.q, args=self.args, stack=stack)+'\n'
             event_array.append(f'&{ev_name}')
         event_array = '{'+', '.join(event_array)+'}'
-        line2 = f'\treturn PyODE<{Tt}, {Ty}>(ODE_FUNC, t0, toCPP_Array<{Tt}, {Ty}>(q0), stepsize, rtol, atol, min_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), event_tol, {event_array}, savedir.cast<std::string>(), save_events_only);\n'+'}'
+        line2 = f'\treturn PyODE<{Tt}, {Ty}>(ODE_FUNC, t0, toCPP_Array<{Tt}, {Ty}>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), event_tol, {event_array}, savedir.cast<std::string>(), save_events_only);\n'+'}'
         return line1+event_block+line2
 
     def module_code(self, scalar_type = "double", stack=True):
@@ -211,10 +211,10 @@ class OdeSystem:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack, scalar_type=scalar_type)
             tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
 
-    def get(self, t0: float, q0: np.ndarray, stepsize=1e-3, rtol=1e-6, atol=1e-12, min_step=0., args=(), method="RK45", event_tol=1e-12, stack=True, no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
+    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", event_tol=1e-12, stack=True, no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
         if len(args) != len(self.args):
             raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
-        params = (t0, q0, stepsize, rtol, atol, min_step, args, method, event_tol, savedir, save_events_only)
+        params = (t0, q0, rtol, atol, min_step, max_step, first_step, args, method, event_tol, savedir, save_events_only)
         if (stack, no_math_errno, no_math_trap, fast_math, scalar_type) not in self._compiled_odes:
             self._ode_generator(stack=stack, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
         return self._compiled_odes[(stack, no_math_errno, no_math_trap, fast_math, scalar_type)](*params)

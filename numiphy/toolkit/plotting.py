@@ -35,7 +35,7 @@ def plot(arr: np.ndarray, grid: grids.Grid, ax=None, **kwargs):
         cbar = plt.colorbar(sm, ax=ax)
         return *fig_ax, cbar
     else:
-        raise NotImplementedError('3D plotting not implemented yet')
+        raise NotImplementedError('3D plotting not implemented')
 
 
 def animate(varname: str, f: np.ndarray, duration: float, save: str, grid: grids.Grid, axis=-1, display = True, **kwargs):
