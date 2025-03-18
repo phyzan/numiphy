@@ -219,8 +219,8 @@ class OdeSystem:
             self._ode_generator(stack=stack, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
         return self._compiled_odes[(stack, no_math_errno, no_math_trap, fast_math, scalar_type)](*params)
     
-    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, threads=-1, display=False)->list[LowLevelODE]:
-        return self._int_all_func(odes, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, threads=threads, display=display)
+    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, threads=-1, max_prints=0)->list[LowLevelODE]:
+        return self._int_all_func(odes, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, threads=threads, max_prints=max_prints)
     
     def _ode_generator(self, stack=True, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
         modname = self.module_name
