@@ -2,6 +2,8 @@ from __future__ import annotations
 from . import bounds
 from ..findiffs import grids
 from ..symlib import operators as sym
+from ..symlib.symcore import _Function
+from ..symlib.operators import MathOperator
 from ..toolkit import tools
 import scipy.linalg as sl
 import numpy as np
@@ -40,11 +42,11 @@ def has_adjoint(op: sym.Operator, bcs: bounds.GroupedBcs):
                 for bc_in in bcs.int_bcs:
                     if not bc_in.is_dirichlet:
                         return False
-        elif arg.is_AbstractFunction:
+        elif isinstance(arg, _Function):
             if not all([has_adjoint(v, bcs) for v in arg.variables]):
                 return False
-        elif arg.is_MathFunction:
-            if not has_adjoint(arg.arg, bcs):
+        elif isinstance(arg, MathOperator):
+            if not has_adjoint(arg.Arg, bcs):
                 return False
     
     return True

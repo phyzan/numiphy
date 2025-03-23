@@ -30,6 +30,10 @@ class Expr(_Expr):
         return -1*self
 
     @classmethod
+    def _all_compatible(cls, *expr: _Expr):
+        return True
+
+    @classmethod
     def _asexpr(cls, arg)->Expr:
         if isinstance(arg, Expr):
             return arg

@@ -84,12 +84,13 @@ class SymbolicEvent(AnySymbolicEvent):
 
     _cls = 'Event'
 
-    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False):
+    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False, event_tol=1e-12):
         AnySymbolicEvent.__init__(self, name, mask, hide_mask)
         if not isinstance(event, Expr):
             raise ValueError("Expr argument must be a valid symbolic expression")
         self.event = event
         self.check_if = check_if
+        self.event_tol = event_tol
 
     def init_code(self, var_name, scalar_type, t, *q, args, stack=True):
         args = tuple(args)
@@ -101,7 +102,7 @@ class SymbolicEvent(AnySymbolicEvent):
         mask = "nullptr"
         if self.mask is not None:
             mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
-        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'});'
+        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
 
 
 class SymbolicPeriodicEvent(AnySymbolicEvent):
@@ -125,6 +126,25 @@ class SymbolicPeriodicEvent(AnySymbolicEvent):
 class SymbolicStopEvent(SymbolicEvent):
 
     _cls = 'StopEvent'
+
+    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False):
+        AnySymbolicEvent.__init__(self, name, mask, hide_mask)
+        if not isinstance(event, Expr):
+            raise ValueError("Expr argument must be a valid symbolic expression")
+        self.event = event
+        self.check_if = check_if
+
+    def init_code(self, var_name, scalar_type, t, *q, args, stack=True):
+        args = tuple(args)
+        arg_list = self.arg_list(*q, args=args, stack=stack)
+        lambda_code = ScalarLowLevelCallable(self.event, t, **arg_list).lambda_code(scalar_type)
+        checkif = "nullptr"
+        if self.check_if is not None:
+            checkif = BooleanLowLevelCallable(self.check_if, t, **arg_list).lambda_code(scalar_type)
+        mask = "nullptr"
+        if self.mask is not None:
+            mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
+        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'});'
 
 
 
@@ -172,7 +192,7 @@ class OdeSystem:
     def ode_generator_code(self, stack=True, scalar_type="double"):
         Tt = scalar_type
         Ty = _vec(stack) + f"<{scalar_type}>"
-        line1 = f"PyODE<{Tt}, {Ty}> GetOde(const {Tt}& t0, py::array q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, const {Tt}& event_tol, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
+        line1 = f"PyODE<{Tt}, {Ty}> GetOde(const {Tt}& t0, py::array q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
         event_block = ''
         event_array = []
         for i in range(len(self.events)):
@@ -180,7 +200,7 @@ class OdeSystem:
             event_block += self.events[i].init_code(ev_name, scalar_type, self.t, *self.q, args=self.args, stack=stack)+'\n'
             event_array.append(f'&{ev_name}')
         event_array = '{'+', '.join(event_array)+'}'
-        line2 = f'\treturn PyODE<{Tt}, {Ty}>(ODE_FUNC, t0, toCPP_Array<{Tt}, {Ty}>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), event_tol, {event_array}, savedir.cast<std::string>(), save_events_only);\n'+'}'
+        line2 = f'\treturn PyODE<{Tt}, {Ty}>(ODE_FUNC, t0, toCPP_Array<{Tt}, {Ty}>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), {event_array}, nullptr, savedir.cast<std::string>(), save_events_only);\n'+'}'
         return line1+event_block+line2
 
     def module_code(self, scalar_type = "double", stack=True):
@@ -211,15 +231,15 @@ class OdeSystem:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack, scalar_type=scalar_type)
             tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
 
-    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", event_tol=1e-12, stack=True, no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
+    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", stack=True, no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
         if len(args) != len(self.args):
             raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
-        params = (t0, q0, rtol, atol, min_step, max_step, first_step, args, method, event_tol, savedir, save_events_only)
+        params = (t0, q0, rtol, atol, min_step, max_step, first_step, args, method, savedir, save_events_only)
         if (stack, no_math_errno, no_math_trap, fast_math, scalar_type) not in self._compiled_odes:
             self._ode_generator(stack=stack, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
         return self._compiled_odes[(stack, no_math_errno, no_math_trap, fast_math, scalar_type)](*params)
     
-    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, threads=-1, max_prints=0)->list[LowLevelODE]:
+    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, threads=-1, max_prints=0)->None:
         return self._int_all_func(odes, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, threads=threads, max_prints=max_prints)
     
     def _ode_generator(self, stack=True, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:

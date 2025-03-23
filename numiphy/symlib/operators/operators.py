@@ -31,6 +31,24 @@ class Operator(_Expr):
     
     def __neg__(self)->Operator:
         return -1*self
+    
+    @classmethod
+    def _assert_vars(cls, *args: VariableOp):
+        names = [x.name for x in args]
+        axes = [x.axis for x in args]
+        for i in range(len(names)-1):
+            for j in range(i+1, len(names)):
+                if (names[j] == names[i] and axes[i] != axes[j]) or (names[j] != names[i] and axes[i] == axes[j]):
+                    raise RuntimeError("Incompatible symbols")
+
+    @classmethod
+    def _all_compatible(cls, *expr: Operator):
+        v = []
+        for f in expr:
+            for x in f.symbols:
+                if x not in v:
+                    v.append(x)
+        cls._assert_vars(*v)
 
     @classmethod
     def _asexpr(cls, arg)->Operator:
@@ -103,10 +121,20 @@ class Operator(_Expr):
     def has_diff(self)->bool:
         return self.contains_type(Diff)
     
-    @property
+    @cached_property
     def variables(self)->tuple[VariableOp, ...]:
-        v: tuple[VariableOp, ...] = super().variables
+        v = _Expr.variables.__get__(self)
         return tools.sort(v, [x.axis for x in v])[0]
+    
+    @cached_property
+    def symbols(self)->tuple[VariableOp, ...]:
+        v = list(_Expr.variables.__get__(self))
+        rest = self.deepsearch(VariableOp, full=True)
+        for x in rest:
+            if x not in v:
+                v.append(x)
+        return tools.sort(v, [x.axis for x in v])[0]
+
 
     @property
     def hasdiff_wrt(self)->tuple[VariableOp,...]:
@@ -248,6 +276,19 @@ class Operator(_Expr):
                     res[v] += arg
             else:
                 res[x] += arg
+            
+        return tuple(res.values())
+    
+    def toaxis(self, axis: int):
+        if len(self.variables) > 1:
+            raise ValueError("")
+        else:
+            x = self.variables[0]
+            to_replace = {x: VariableOp(x.name, axis)}
+            res = self.replace(to_replace)
+            if len(res.variables) > 1:
+                raise RuntimeError("Bug: Some varibles were not substituted properly")
+            return res
 
 class SubsOp(Operator, _Subs):...
 
@@ -386,7 +427,7 @@ class DerivOp(Operator, _Derivative):
         return super().__new__(cls, f, *vars, simplify=simplify)
 
 
-class Diff(Operator, Atom):
+class Diff(Operator):
 
     def __new__(cls, var: VariableOp, order=1):
         if isinstance(order, IntegerOp):
@@ -401,7 +442,17 @@ class Diff(Operator, Atom):
             obj = super().__new__(cls)
             obj.Args = (var, order)
             return obj
-    
+        
+    @property
+    def args(self):
+        return ()
+
+    def init(self, *, simplify=True):
+        return self.__class__(*self.Args)
+
+    def lowlevel_repr(self, scalar_type="double")->str:
+        raise NotImplementedError("")
+
     @property
     def symbol(self)->VariableOp:
         return self.Args[0]

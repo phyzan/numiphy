@@ -1,2 +1,2 @@
-from .odepack import *
+from .odepack import * #type: ignore
 from .lowlevelsupport import *

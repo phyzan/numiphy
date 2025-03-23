@@ -85,7 +85,7 @@ def animate(varname: str, f: np.ndarray, duration: float, save: str, grid: grids
             
             return [ax]
     elif f.ndim == 3:
-        norm = norm=plt.Normalize(*lims)
+        norm = plt.Normalize(*lims)
         sm = cm.ScalarMappable(cmap=kwargs['cmap'], norm=norm)
         sm.set_array([])
         cbar = plt.colorbar(sm, ax=ax)

@@ -11,9 +11,9 @@ from functools import cached_property
 import math
 
 
+
 class _Expr:
 
-    Args: tuple
     repr_priority = 3
     is_symexpr = False
     is_operator = False
@@ -84,6 +84,9 @@ class _Expr:
         elif isinstance(other, _Any):
             return other == self
         return False
+    
+    @classmethod
+    def _all_compatible(cls, *expr: _Expr):...
 
     @classmethod
     def _asexpr(cls, arg)->_Expr:...# also checks if it is operator or not e.g.
@@ -147,6 +150,18 @@ class _Expr:
 
     def makenew(self, changefunc: str, *args, **kwargs)->_Expr:
         return self.init(*[getattr(arg, changefunc)(*args, **kwargs) for arg in self.args])
+    
+    def varsub(self, data: dict[_Symbol, _Symbol]):
+        newArgs = []
+        for arg in self.Args:
+            if isinstance(arg, _Symbol) and arg in data:
+                newArgs.append(data[arg])
+            elif isinstance(arg, _Expr):
+                newArgs.append(arg.varsub(data))
+            else:
+                newArgs.append(arg)
+        return self.__class__(*newArgs)
+
 
     def is_const_wrt(self, x: _Symbol):
         return x not in self.variables
@@ -419,6 +434,10 @@ class _Expr:
 
 class Node(_Expr):
 
+    def __new__(cls, *args: _Expr):
+        cls._all_compatible(*args)
+        return _Expr.__new__(cls)
+
     @classmethod
     def simplify(cls, *args: _Expr)->tuple[_Expr,...]:...
 
@@ -458,6 +477,7 @@ class Atom(_Expr):
     def lowlevel_repr(self, scalar_type="double")->str:
         return f'{self.Args[0]}'
 
+
 class Operation(Node):
 
     is_commutative = True
@@ -472,10 +492,10 @@ class Operation(Node):
             if len(args) == 1:
                 return args[0]
             else:
-                obj = Node.__new__(cls)
+                obj = Node.__new__(cls, *args)
                 obj.Args = args
         else:
-            obj = Node.__new__(cls)
+            obj = Node.__new__(cls, *args)
             obj.Args = args
         return obj
 
@@ -806,7 +826,6 @@ class _Pow(Operation):
     repr_priority = 2
     binary = '**'
 
-
     def __new__(cls, base, power, simplify=True):
         return super().__new__(cls, base, power, simplify=simplify)
     
@@ -885,6 +904,10 @@ class _Pow(Operation):
 
 
 class _Function(Atom):
+
+    def __new__(cls, *x: _Symbol):
+        cls._all_compatible(*x)
+        return Atom.__new__(cls)
 
     is_analytical_expression = False
     #define self.Args, probably in subclasses
@@ -1034,6 +1057,7 @@ class _Integer(_Rational):
     def d(self)->int:
         return 1
 
+
 class _Special(_Number):
 
     def __init__(self, name: str, value: float):
@@ -1142,7 +1166,7 @@ class _Subs(Node):
             if not newvals:
                 return expr
 
-            obj = super().__new__(cls)
+            obj = Node.__new__(cls, expr, *tuple(vals.values()))
             obj.Args = (expr, vals)
             return obj
 
@@ -1230,7 +1254,7 @@ class _Derivative(Node):
                 else:
                     return f.init(arg)
 
-        obj = super().__new__(cls)
+        obj = Node.__new__(cls, f, *vars)
         if isinstance(f, _Derivative):
             diffs = f.diffcount.copy()
             f = f.f
@@ -1363,7 +1387,7 @@ class _Integral(Node):
                 diffs[var] -= 1
                 return _Derivative(f.f, *f.newvars(diffs))
 
-        obj = super().__new__(cls)
+        obj = Node.__new__(cls, f, var)
         obj.Args = (f, var, x0)
         return obj
 
@@ -1430,6 +1454,9 @@ class _Integral(Node):
 
 class _ScalarField(_Function):
 
+    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: _Symbol):
+        return _Function.__new__(cls, *vars)
+
     def __init__(self, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: _Symbol):
         if ndarray.shape != grid.shape:
             raise ValueError(f'Grid shape is {grid.shape} while field shape is {ndarray.shape}')
@@ -1443,7 +1470,7 @@ class _ScalarField(_Function):
         if hasattr(args[0], '__iter__'):
             return self.interpolator(args, method="cubic")
         else:
-            args = [np.array([arg]) for arg in args]
+            args = np.array(args)
             return self.interpolator(args, method="cubic")[0]
         
     @property
@@ -1618,7 +1645,7 @@ class _Piecewise(Node):
         default = cases[-1][0]
         if isinstance(default, _Piecewise):
             cases = cases[:-1] + default.Args
-        obj = super().__new__(cls)
+        obj = Node.__new__(cls, *[f[0] for f in cases])
         obj.Args = cases
         return obj
 
@@ -1672,8 +1699,6 @@ class _Piecewise(Node):
             res = np.where(bools[i], arrs[i], res)
         return res
     
-
-
 
 class _Any(_Expr):
 

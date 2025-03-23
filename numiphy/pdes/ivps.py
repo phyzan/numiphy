@@ -3,6 +3,7 @@ from typing import Callable
 from ..findiffs import grids
 from . import bounds
 # from .. import symbolic as sym
+from ..symlib import operators as sym
 from . import cached
 from ..toolkit import tools
 from .. import odesolvers as ods
@@ -43,7 +44,7 @@ class Propagator:
 
 class IVP(ABC):
 
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, *operators: sym.Expr):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, *operators: sym.Operator):
         bcs.apply_grid(grid)
         self.grid = bcs.grid
         self.bcs = bcs
@@ -62,48 +63,48 @@ class IVP(ABC):
     def set_ics(self, f0: Callable[..., np.ndarray]):
         self.f0 = f0
 
-    def apply_bcs(self, t, f: np.ndarray):
+    def apply_bcs(self, t, f: np.ndarray, *args):
         return self.bcs.apply(f, t)
 
-    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def solve(self, t, acc=1, fd='central', **ode_args):
         '''
         remember to include non-autonomous IVP's
         '''
-        ics = (0, self.bcs.discretize(self.f0, 0))
-        kwargs = dict(t=t, dt=dt, method=method, rtol=rtol, max_frames=max_frames, display=display)
+        q0 = self.bcs.discretize(self.f0, 0)
         if self.bcs.is_homogeneous:
             ops = tuple([cached.cache_operator(op, self.grid, self.bcs, acc, fd) for op in self.operators])
-            ics = (ics[0], self.bcs.reduced_array(ics[1]))
-            ode = ods.ODE(self.dfdt, ics=ics)
-            x, f = ode.solve(**kwargs, args = ops)
-            f = self.bcs.insert(f)
+            ics = (ics[0], self.bcs.reduced_array(q0))
+            ode = ods.LowLevelODE(self.dfdt, t0=0, q0=self.bcs.reduced_array(ics[1]), args=ops, **ode_args)
+            res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
+            x = res.t
+            f = self.bcs.insert(res.q)
         else:
             ops = tuple([cached.cache_operator(op, self.grid, acc=acc, fd=fd) for op in self.operators])
-            ode = ods.ODE(self.dfdt, ics=ics)
-            x, f = ode.solve(**kwargs, args = ops, mask=self.apply_bcs)
+            ode = ods.LowLevelODE(self.dfdt, t0=0, q0=q0, args=ops, mask=self.apply_bcs, **ode_args)
+            res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
+            x = res.t
                 
         return x, f.flatten().reshape((*self.grid.shape, x.shape[0]), order='F')
     
-    def get_ScalarField(self, name: str, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def get_ScalarField(self, name: str, t, acc=1, fd='central', **ode_args):
         '''
         general method, even for non linear problems. I need to get the varnames when i have many operators.
         for linear IVP problems this is easy, it is just self.op.varnames because there is only one op.
         '''
-        v: list[sym.Variable] = []
+        v: list[sym.VariableOp] = []
         for arg in self.operators:
             for x in arg.variables:
                 if x not in v:
                     v.append(x)
-        variables: list[sym.Variable] = tools.sort(v, [x.axis for x in v])[0]
-        names = [x.name for x in variables]
-        t, f = self.solve(t=t, dt=dt, method=method, rtol=rtol, max_frames=max_frames, display=display, acc=acc, fd=fd)
+        variables: list[sym.VariableOp] = tools.sort(v, [x.axis for x in v])[0]
+        t, f = self.solve(t=t, acc=acc, fd=fd, **ode_args)
 
-        return fields.ScalarField(f, self.grid*grids.Unstructured1D(t), name, *names, 't')
+        return sym.ScalarFieldOp(f, self.grid*grids.Unstructured1D(t), name, *variables, sym.VariableOp('t', len(variables)))
 
 
 class LinearIVP(IVP):
 
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Expr):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Operator):
         super().__init__(bcs, grid, operator)
         self.ivp_op = operator
 
@@ -114,7 +115,7 @@ class LinearIVP(IVP):
 
 class InhomLinearIVP(LinearIVP):
 
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Expr, source: Callable[..., np.ndarray]):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Operator, source: Callable[..., np.ndarray]):
         super().__init__(bcs, grid, operator)
         self._src = source
 
@@ -146,20 +147,23 @@ class HomLinearIBVP(HomLinearIVP):
     '''
     Homogeneous linear initial value problem with homogeneous boundary conditions
     '''
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Expr, coef = 1.0):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Operator, coef = 1.0):
         if not bcs.is_homogeneous:
             raise ValueError('HomLinearIBVP needs homogeneous boundary conditions')
         super().__init__(bcs, grid, (coef*operator).expand())
         self.eigproblem = linalg.EigProblem(operator, bcs, self.grid)
         self._coef = coef
 
-    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def solve(self, t, first_step, acc=1, fd='central', **ode_args):
+        method = ode_args.pop("method", None)
         if method == 'propagator':
             self.arm_propagator()
-            t_arr = np.append(np.arange(0, t, dt), [t])
+            t_arr = np.append(np.arange(0, t, first_step), [t])
             return t_arr, self.propagate(t_arr)
         else:
-            return super().solve(t, dt, method, rtol, max_frames, display, acc, fd)
+            if method is not None:
+                ode_args["method"] = method
+            return super().solve(t, acc, fd, **ode_args)
 
     def set_ics(self, f0: Callable[..., np.ndarray]):
         self.f0 = f0
@@ -185,7 +189,7 @@ class IVPsystem2D(ABC):
         Similarly, dfdt = [dudt, dvdt]
 
     '''
-    def __init__(self, bcs1: bounds.GroupedBcs, bcs2: bounds.GroupedBcs, grid: grids.Grid, *operators: sym.Expr):
+    def __init__(self, bcs1: bounds.GroupedBcs, bcs2: bounds.GroupedBcs, grid: grids.Grid, *operators: sym.Operator):
 
         self.bcs1 = bcs1
         self.bcs2 = bcs2
@@ -205,21 +209,27 @@ class IVPsystem2D(ABC):
         self.u0 = u0
         self.v0 = v0
 
-    def apply_bcs(self, t, f: np.ndarray):
+    def apply_bcs(self, t, f: np.ndarray, *args):
         s = np.zeros(shape=(2, self.grid.n))
         s[0, :] = self.bcs1.apply(f[0], t)
         s[1, :] = self.bcs2.apply(f[1], t)
         return s
     
-    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
+    def solve(self, t, acc=1, fd='central', **ode_args):
         f0 = self.joker.copy()
         f0[0, :] = self.bcs1.discretize(self.u0, 0)
         f0[1, :] = self.bcs2.discretize(self.v0, 0)
-        ics = (0, f0)
-        kwargs = dict(t=t, dt=dt, method=method, rtol=rtol, max_frames=max_frames, display=display)
         ops = tuple([cached.cache_operator(op, self.grid, acc=acc, fd=fd) for op in self.operators])
-        ode = ods.ODE(self.dfdt, ics=ics)
-        x, f = ode.solve(**kwargs, args=ops, mask = self.apply_bcs)
+
+        max_frames=ode_args.pop("max_frames", -1)
+        max_prints=ode_args.pop("max_prints", 0)
+        max_events = ode_args.pop("max_events", 0)
+        # ode = ods.LowLevelODE(self.dfdt, 0, f0, mask=self.apply_bcs, args=ops, **ode_args)
+        from scipy.integrate import solve_ivp
+        res = solve_ivp(lambda t, f, *ops: self.dfdt(t, f.reshape(f0.shape), *ops).flatten(), (0, t), f0.flatten(), args=ops, vectorized=True,**ode_args)
+        # res = ode.integrate(t, max_frames=max_frames, max_prints=max_prints, max_events=max_events, include_first=True)
+        x, f = res.t, res.y.reshape((*f0.shape, res.y.shape[-1]))
+        f = f.swapaxes(0, 2).swapaxes(1, 2)
         u = f[:, 0, :]
         v = f[:, 1, :]
 
@@ -231,12 +241,12 @@ class IVPsystem2D(ABC):
 
 class Wave(IVPsystem2D, HomLinearIVP):
     
-    def __init__(self, c: sym.Expr, bcs: bounds.GroupedBcs, grid: grids.Grid):
+    def __init__(self, c: sym.Operator, bcs: bounds.GroupedBcs, grid: grids.Grid):
         if grid.nd == 1:
-            x = sym.Variable('x')
+            x = sym.VariableOp('x', 0)
             Laplacian = sym.Diff(x)**2
         elif grid.nd == 2:
-            x, y = sym.variables('x y')
+            x, y = sym.VariableOp('x', 0), sym.VariableOp('y', 1)
             Laplacian = sym.Diff(x)**2 + sym.Diff(y)**2
         HomLinearIVP.__init__(self, bcs, grid, c**2*Laplacian)
         IVPsystem2D.__init__(self, bcs, bcs.diff(), grid, c**2*Laplacian)
@@ -244,6 +254,6 @@ class Wave(IVPsystem2D, HomLinearIVP):
     def dfdt(self, t, f, laplacian: cached.CachedOperator)->np.ndarray:
         return np.array([f[1], laplacian.matrix(self.grid, t).dot(f[0])])
     
-    def solve(self, t, dt, method='RK4', rtol=0., max_frames=-1, display=True, acc=1, fd='central'):
-        x, (f, df) = IVPsystem2D.solve(self, t, dt, method, rtol, max_frames, display, acc, fd)
+    def solve(self, t, acc=1, fd='central', **ode_args):
+        x, (f, df) = IVPsystem2D.solve(self, t, acc, fd, **ode_args)
         return x, f
