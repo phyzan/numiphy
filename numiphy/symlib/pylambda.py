@@ -17,7 +17,7 @@ class Container:
         return {self.args[i]: Symbol(f'{array_name}[{i}]') for i in range(len(self.args))}
     
     def converted(self, expr: Expr, array_name: str):
-        return expr.replace(self.map(array_name))
+        return expr.varsub(self.map(array_name))
     
 
 class PyContainer(Container):
@@ -65,12 +65,12 @@ class _BooleanCallable(_CallableFunction):
         self.expr = expr
         _CallableFunction.__init__(self, *args, **containers)
 
-    def _mapped_boolen(self)->Boolean:
+    def _mapped_boolean(self)->Boolean:
         f = self.expr
         for name in self.containers:
             array = self.containers[name]
             _map = array.map(name)
-            f = f.do("replace", _map)
+            f = f.varsub(_map)
         return f
     
     def return_id(self, scalar_type: str):
@@ -138,7 +138,7 @@ class _PythonCallable(_CallableFunction):
 class BooleanPythonCallable(_BooleanCallable, _PythonCallable):
 
     def core_impl(self, lib: str):
-        res = self._mapped_boolen().repr(lib=lib)
+        res = self._mapped_boolean().repr(lib=lib)
         return f"return {res}"
 
 

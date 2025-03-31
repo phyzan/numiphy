@@ -5,7 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sciopt
 import scipy.integrate as scint
-from numiphy.symlib import expressions as sym
+from numiphy.symlib import symcore as sym
+from numiphy.symlib.pylambda import ScalarLambdaExpr, VectorLambdaExpr
 from numiphy.symlib.geom import Line2D, Circle
 
 
@@ -20,10 +21,10 @@ class VectorField2D:
             symbols.append(xi)
             
         self.xvar, self.yvar = x, y
-        self.x = sym.ScalarLambdaExpr(Fx, *symbols)
-        self.y = sym.ScalarLambdaExpr(Fy, *symbols)
+        self.x = ScalarLambdaExpr(Fx, *symbols)
+        self.y = ScalarLambdaExpr(Fy, *symbols)
 
-        self.Jac = sym.VectorLambdaExpr([[Fx.diff(x), Fx.diff(y)], [Fy.diff(x), Fy.diff(y)]], *symbols)
+        self.Jac = VectorLambdaExpr([[Fx.diff(x), Fx.diff(y)], [Fy.diff(x), Fy.diff(y)]], *symbols)
 
 
     def __call__(self, *args, **kwargs):

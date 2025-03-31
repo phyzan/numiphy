@@ -29,6 +29,14 @@ class _HashableObject:
 
 class Hashable(_HashableObject):
 
+    def __new__(cls, obj):
+        if isinstance(obj, Expr):
+            return super().__new__(cls)
+        elif isinstance(obj, (_HashableObject, int, float, str)):
+            return obj
+        else:
+            return hash(obj)
+
     def __init__(self, arg: Expr):
         self.arg = arg
 
@@ -47,9 +55,9 @@ class Hashable(_HashableObject):
             return -1
         else:
             for (obj1, obj2) in zip(self.arg._hashable_content, other.arg._hashable_content):
-                if obj1 < obj2:
+                if (Hashable(obj1) < Hashable(obj2)):
                     return -1
-                elif obj1 > obj2:
+                elif (Hashable(obj1) > Hashable(obj2)):
                     return 1
             return 0
 
@@ -98,9 +106,7 @@ class _HashableGrid(_HashableObject):
                 return -1
             else:
                 return self.grid.periodic - other.grid.periodic
-
-    
-
+            
 def sort_by_hash(*args: Expr):
     res = sorted([Hashable(arg) for arg in args])
     return tuple([arg.arg for arg in res])

@@ -258,7 +258,7 @@ class OdeSystem:
         return temp_module.get_ode
 
 
-def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=(), stop_events: Iterable[SymbolicStopEvent]=()):
+def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
         n = len(ode_sys)
         ode_sys = tuple(ode_sys)
         var_odesys = []
@@ -266,7 +266,7 @@ def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol]
             var_odesys.append(sum([ode_sys[i].diff(q[j])*delq[j] for j in range(n)]))
         
         new_sys = ode_sys + tuple(var_odesys)
-        return OdeSystem(new_sys, t, *q, *delq, args=args, events=events, stop_events=stop_events)
+        return OdeSystem(new_sys, t, *q, *delq, args=args, events=events)
 
 
 def load_ode_data(filedir: str)->tuple[np.ndarray[int], np.ndarray, np.ndarray]:

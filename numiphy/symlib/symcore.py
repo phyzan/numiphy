@@ -18,7 +18,7 @@ class Expr:
 
     _args: tuple #the only object attribute
     _priority: int #class attribute
-    repr_priority = 3
+    _repr_priority = 3
 
 
     def __new__(cls, *args):
@@ -91,6 +91,10 @@ class Expr:
     
     def __hash__(self):
         return hash((self.__class__,) + self._hashable_content)
+
+    @property
+    def repr_priority(self):
+        return self.__class__._repr_priority
 
     @cached_property
     def is_operator(self)->bool:
@@ -298,7 +302,6 @@ class Expr:
     @classmethod
     def simplify(cls, *args: Expr)->tuple[Expr,...]:
         raise NotImplementedError('')
-        
 
 
 
@@ -354,7 +357,7 @@ class Expr:
         override
         '''
         base = self.repr(arg) if not lowlevel else self.lowlevel_repr(arg)
-        if oper.repr_priority <= self.repr_priority:
+        if oper._repr_priority <= self.repr_priority:
             return base
         else:
             return f'({base})'
@@ -614,7 +617,7 @@ class Operation(Expr):
 
 class Add(Operation):
 
-    repr_priority = 0
+    _repr_priority = 0
     binary = '+'
     _priority = 0
 
@@ -711,7 +714,7 @@ class Add(Operation):
 
 class Mul(Operation):
 
-    repr_priority = 1
+    _repr_priority = 1
     binary = '*'
     _priority = 1
 
@@ -921,7 +924,7 @@ class Mul(Operation):
 
 class Pow(Operation):
 
-    repr_priority = 2
+    _repr_priority = 2
     binary = '**'
     _priority = 2
 
@@ -1102,7 +1105,7 @@ class Float(Number):
         if self.value < 0:
             return 1
         else:
-            return self.__class__.repr_priority
+            return self.__class__._repr_priority
     
     def repr(self, lib=""):
         return str(self.value)
@@ -1113,7 +1116,7 @@ class Float(Number):
     
 class Rational(Number):
 
-    repr_priority = 1
+    _repr_priority = 1
     _priority = 5
 
     def __new__(cls, m: int, n: int):
@@ -1146,7 +1149,7 @@ class Rational(Number):
         if self.value < 0:
             return 1
         else:
-            return self.__class__.repr_priority
+            return self.__class__._repr_priority
     
     def repr(self, lib=""):
         return f'{self.n}/{self.d}'
@@ -1167,7 +1170,7 @@ class Rational(Number):
 
 class Integer(Rational):
 
-    repr_priority = 3
+    _repr_priority = 3
     _priority = 4
 
     def __new__(cls, m):
@@ -1198,15 +1201,15 @@ class Special(Number):
 
     def __new__(cls, name: str, value: float):
         assert value > 0 and isinstance(value, float)
-        return Expr.__new__(cls, name, value)
+        return Expr.__new__(cls, value, name)
     
     @property
     def name(self)->str:
-        return self._args[0]
+        return self._args[1]
 
     @property
     def value(self)->float:
-        return self._args[1]
+        return self._args[0]
 
     def repr(self, lib=""):
         if lib == '':
@@ -1217,10 +1220,13 @@ class Special(Number):
     def lowlevel_repr(self, scalar_type="double"):
         return self.name
     
+    def init(self, value, name, simplify=True):
+        return self.__class__(name, value)
+    
 
 class Complex(Number):
 
-    repr_priority = 3
+    _repr_priority = 3
     _priority = 7
 
     def __new__(cls, real: float, imag: float):
@@ -1257,7 +1263,8 @@ class Symbol(Atom):
 
     _priority = 8
 
-    def __new__(cls, name: str, axis=0, simplify=True):
+    def __new__(cls, name: str, axis=0):
+        assert isinstance(name, str) and isinstance(axis, int)
         return Expr.__new__(cls, axis, name)
 
     @property
@@ -1294,6 +1301,9 @@ class Symbol(Atom):
     
     def lowlevel_repr(self, scalar_type="double"):
         return self.name
+    
+    def init(self, axis, name, simplify=True):
+        return self.__class__(name, axis)
     
 
 class Dummy(Symbol):
