@@ -1,9 +1,9 @@
 from __future__ import annotations
 from . import bounds
 from ..findiffs import grids
-from ..symlib import operators as sym
-from ..symlib.symcore import _Function
-from ..symlib.operators import MathOperator
+from ..symlib import symcore as sym
+from ..symlib.symcore import Function
+from ..symlib.mathfuncs import Mathfunc
 from ..toolkit import tools
 import scipy.linalg as sl
 import numpy as np
@@ -18,9 +18,9 @@ CHECK HERMICITY CONDITIONS. MAYBE AN SL OPERATOR IS HERMITIAN WITH PROPER BCS
 DETERMINTE ADJOINT AND HERMICITY WITH WEIGHT FUNCTION. MAYBE STURM LIOUVILLE ONLY IN 1D
 '''
 
-def has_adjoint(op: sym.Operator, bcs: bounds.GroupedBcs):
+def has_adjoint(op: sym.Expr, bcs: bounds.GroupedBcs):
     for arg in op.deepsearch():
-        if isinstance(arg, sym.VariableOp):
+        if isinstance(arg, sym.Symbol):
             if arg.axis >=  bcs.nd:
                 raise ValueError(f'The "{arg.name}" variable has axis={arg.axis}, while the boundary conditions correspond to a lower, {bcs.nd}-dimensional, space')
         elif isinstance(arg, sym.Diff):
@@ -42,10 +42,10 @@ def has_adjoint(op: sym.Operator, bcs: bounds.GroupedBcs):
                 for bc_in in bcs.int_bcs:
                     if not bc_in.is_dirichlet:
                         return False
-        elif isinstance(arg, _Function):
+        elif isinstance(arg, Function):
             if not all([has_adjoint(v, bcs) for v in arg.variables]):
                 return False
-        elif isinstance(arg, MathOperator):
+        elif isinstance(arg, Mathfunc):
             if not has_adjoint(arg.Arg, bcs):
                 return False
     
@@ -179,7 +179,7 @@ class SturmLiouville:
         self.grouped_bcs.apply_grid(grid)
         self.grid = bcs.grid
         if len(x) == 0:
-            self.var = sym.Variable('x')
+            self.var = sym.Symbol('x')
         else:
             self.var = x[0]
 

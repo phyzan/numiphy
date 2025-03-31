@@ -1,27 +1,16 @@
 from __future__ import annotations
 
-from .symcore import *
-from .symcore import _Expr, _Symbol
+from .symcore import Expr, asexpr, Number, Symbol, S
 from typing import Dict
 import numpy as np
 from typing import Callable
 import numpy.typing as npt
 
 
-class Boolean:
+class Boolean(Expr):
 
     operator: str
-    Args: tuple
 
-    def __str__(self):
-        return self.repr()
-    
-    def __repr__(self):
-        return str(self)
-
-    def __eq__(self, other: Boolean):
-        return type(self) is type(other) and self.Args == other.Args
-    
     def __and__(self, other: Boolean):
         return And(self, other)
     
@@ -37,119 +26,116 @@ class Boolean:
     def __invert__(self):
         return Not(self)
 
-    def repr(self, lib="")->str:...
-
-    def lowlevel_repr(self, scalar_type="double")->str:...
-
-    def elementwise_eval(self, x: Dict[_Symbol, np.ndarray], **kwargs)->np.ndarray[bool]:...
-
-    def do(self, func: str, *args, **kwargs)->Boolean:...
+    def _diff(self, var):
+        return S.Zero
 
 
 class Comparison(Boolean):
 
-    Args: tuple[_Expr, _Expr]
 
-    def __new__(cls, a, b):
-        if isinstance(a, _Expr) and not isinstance(b, _Expr):
-            b = a._asexpr(b)
-        elif not isinstance(a, _Expr) and isinstance(b, _Expr):
-            a = b._asexpr(a)
-        if a.isNumber and b.isNumber:
-            return cls.evaluate(a.eval().value, b.eval().value)
+    def __new__(cls, a, b, simplify=True):
+        a, b = asexpr(a), asexpr(b)
+        if isinstance(a, Number) and isinstance(b, Number):
+            return cls.evaluate(a.value, b.value)
         else:
-            obj = super().__new__(cls)
-            obj.Args = (a, b)
-            return obj
+            return Boolean.__new__(cls, a, b)
+
+    @property
+    def a(self)->Expr:
+        return self.args[0]
     
     @property
-    def a(self):
-        return self.Args[0]
-    
-    @property
-    def b(self):
-        return self.Args[1]
+    def b(self)->Expr:
+        return self.args[1]
 
     def repr(self, lib="")->str:
         if lib == '':
             if isinstance(self, (Eq, Neq)):
                 return f'{self.__class__.__name__}({self.a}, {self.b})'
             else:
-                return f'{self.a} {self.operator} {self.b}'
-        return f'{self.a.repr(lib)} {self.operator} {self.b.repr(lib)}'
+                return f'({self.a} {self.operator} {self.b})'
+        return f'({self.a.repr(lib)} {self.operator} {self.b.repr(lib)})'
 
     def lowlevel_repr(self, scalar_type="double"):
-        return f'{self.a.lowlevel_repr(scalar_type)} {self.operator} {self.b.lowlevel_repr(scalar_type)}'
+        return f'({self.a.lowlevel_repr(scalar_type)} {self.operator} {self.b.lowlevel_repr(scalar_type)})'
 
     @classmethod
-    def evaluate(cls, a: float, b: float)->bool:...
+    def evaluate(cls, a: float, b: float)->bool:
+        raise NotImplementedError('')
 
-    def elementwise_eval(self, x: Dict[_Symbol, np.ndarray], **kwargs)->np.ndarray[bool]:
+    def get_ndarray(self, x: Dict[Symbol, np.ndarray], **kwargs)->np.ndarray[bool]:
         return self.evaluate(self.a.get_ndarray(x, **kwargs), self.b.get_ndarray(x, **kwargs))
-
-    def do(self, func: str, *args, **kwargs):
-        a = getattr(self.a, func)(*args, **kwargs)
-        b = getattr(self.b, func)(*args, **kwargs)
-        return self.__class__(a, b)
+    
+    def eval(self):
+        a, b = self.a.eval(), self.b.eval()
+        if isinstance(a, Number) and isinstance(b, Number):
+            return asexpr(self.evaluate(a.value, b.value))
+        else:
+            return self.init(a, b)
 
 
 class Logical(Boolean):
 
-    Args: tuple[Boolean, Boolean]
     cpp_op: str
     np_logical: Callable[[npt.NDArray, npt.NDArray], npt.NDArray[np.bool_]]
 
-    def __new__(cls, left: Boolean, right: Boolean):
+    def __new__(cls, left: Boolean, right: Boolean, simplify=True):
         if cls is Logical:
             raise ValueError("The Logical class cannot be directly instanciated")
-        
-        obj = super().__new__(cls)
-        obj.Args = (left, right)
-        return obj
+        return Boolean.__new__(cls, left, right)
     
     @classmethod
     def _assert(cls, a, b):
         if not isinstance(a, (Boolean, bool)) or not isinstance(b, (Boolean, bool)):
             raise ValueError(f"Left and right expressions need to be instances of the Boolean class, not {a.__class__} and {b.__class__}")
+        
+    @classmethod
+    def evaluate(cls, a: bool, b: bool)->bool:
+        raise NotImplementedError('')
 
     @property
-    def left(self):
-        return self.Args[0]
+    def left(self)->Boolean:
+        return self.args[0]
     
     @property
-    def right(self):
-        return self.Args[1]
+    def right(self)->Boolean:
+        return self.args[1]
     
     def repr(self, lib=""):
-        return f'({self.left.repr(lib)}) {self.operator} ({self.right.repr(lib)})'
+        return f'(({self.left.repr(lib)}) {self.operator} ({self.right.repr(lib)}))'
     
     def lowlevel_repr(self, scalar_type="double"):
-        return f'({self.left.lowlevel_repr(scalar_type)}) {self.cpp_op} ({self.right.lowlevel_repr(scalar_type)})'
-
-    def elementwise_eval(self, x, **kwargs):
-        left = self.left.elementwise_eval(x, **kwargs)
-        right = self.right.elementwise_eval(x, **kwargs)
+        return f'(({self.left.lowlevel_repr(scalar_type)}) {self.cpp_op} ({self.right.lowlevel_repr(scalar_type)}))'
+    
+    def get_ndarray(self, x, **kwargs):
+        left = self.left.get_ndarray(x, **kwargs)
+        right = self.right.get_ndarray(x, **kwargs)
         return self.np_logical(left, right)
     
-    def do(self, func: str, *args, **kwargs):
-        a = self.left.do(func, *args, **kwargs)
-        b = self.right.do(func, *args, **kwargs)
-        return self.__class__(a, b)
+    def eval(self):
+        a, b = self.left.eval(), self.right.eval()
+        if isinstance(a, Number):
+            a = a.value
+        if isinstance(b, Number):
+            b = b.value
+        return self.init(a, b)
 
 
 class Not(Boolean):
 
     operator = '~'
-    arg: Boolean
+    _priority = 17
 
-    def __new__(cls, arg: Boolean):
+    def __new__(cls, arg: Boolean, simplify=True):
         if isinstance(arg, bool):
-            return not bool
+            return not arg
         elif not isinstance(arg, Boolean):
             raise ValueError("Argument must be of the Boolean class")
-        obj = super().__new__(cls)
-        obj.arg = arg
-        return obj
+        return Boolean.__new__(cls, arg)
+
+    @property
+    def arg(self)->Boolean:
+        return self._args[0]
 
     def repr(self, lib=""):
         return f'({self.operator} ({self.arg.repr(lib)}))'
@@ -157,18 +143,22 @@ class Not(Boolean):
     def lowlevel_repr(self, scalar_type="double"):
         return f'!({self.arg.lowlevel_repr(scalar_type)})'
     
-    def elementwise_eval(self, x, **kwargs):
-        arr = self.arg.elementwise_eval(x, **kwargs)
+    def get_ndarray(self, x, **kwargs):
+        arr = self.arg.get_ndarray(x, **kwargs)
         return np.logical_not(arr)
     
-    def do(self, func, *args, **kwargs):
-        f = self.arg.do(func, *args, **kwargs)
-        return Not(f)
+    def eval(self):
+        a = self.arg.eval()
+        if isinstance(a, Number):
+            return asexpr(not a.value)
+        else:
+            return self.init(a)
 
 
 class Gt(Comparison):
 
     operator = '>'
+    _priority = 18
 
     @classmethod
     def evaluate(cls, a: float, b: float) -> bool:
@@ -178,6 +168,7 @@ class Gt(Comparison):
 class Lt(Comparison):
 
     operator = '<'
+    _priority = 19
 
     @classmethod
     def evaluate(cls, a: float, b: float) -> bool:
@@ -187,6 +178,7 @@ class Lt(Comparison):
 class Ge(Comparison):
 
     operator = '>='
+    _priority = 20
 
     @classmethod
     def evaluate(cls, a: float, b: float) -> bool:
@@ -196,6 +188,7 @@ class Ge(Comparison):
 class Le(Comparison):
 
     operator = '<='
+    _priority = 21
 
     @classmethod
     def evaluate(cls, a: float, b: float) -> bool:
@@ -205,6 +198,7 @@ class Le(Comparison):
 class Eq(Comparison):
 
     operator = '=='
+    _priority = 22
 
     @classmethod
     def evaluate(cls, a: float, b: float) -> bool:
@@ -214,6 +208,7 @@ class Eq(Comparison):
 class Neq(Comparison):
 
     operator = '!='
+    _priority = 23
 
     @classmethod
     def evaluate(cls, a: float, b: float) -> bool:
@@ -225,15 +220,20 @@ class And(Logical):
     cpp_op = '&&'
     operator = '&'
     np_logical = np.logical_and
+    _priority = 24
 
-    def __new__(cls, left, right):
+    def __new__(cls, left, right, simplify=True):
         cls._assert(left, right)
         if left is False or right is False:
             return False
         elif left is True and right is True:
             return True
         else:
-            return super().__new__(cls, left, right)
+            return Logical.__new__(cls, left, right, simplify=simplify)
+        
+    @classmethod
+    def evaluate(cls, a, b):
+        return a and b
 
 
 class Or(Logical):
@@ -241,23 +241,18 @@ class Or(Logical):
     cpp_op = '||'
     operator = '|'
     np_logical = np.logical_or
+    _priority = 25
 
-    def __new__(cls, left, right):
+    def __new__(cls, left, right, simplify=True):
         cls._assert(left, right)
         if left is True or right is True:
             return True
         elif left is False and right is False:
             return False
         else:
-            return super().__new__(cls, left, right)
+            return Logical.__new__(cls, left, right, simplify=simplify)
+        
+    @classmethod
+    def evaluate(cls, a, b):
+        return a or b
 
-
-
-'''
-TODO
-
-In the future, implement And, Or classes:
-
-e.g. (x<0) and (x>0) is a condition
-
-'''

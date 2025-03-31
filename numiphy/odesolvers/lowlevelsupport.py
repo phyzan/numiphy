@@ -1,12 +1,14 @@
-from ..symlib.expressions import *
+from ..symlib.symcore import *
+from ..symlib.pylambda import *
 from typing import Iterable
-from ..symlib.conditional import Boolean
+from ..symlib.boolean import Boolean
 from ..toolkit import tools
 import os
 import tempfile
+from typing import Callable
 from .odepack import * # type: ignore
 from functools import cached_property
-from ..symlib.expressions.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable
+from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable
 import pybind11 #imported only to to raise error if it does not exist. It is needed for the compiler
 
 
@@ -74,10 +76,10 @@ class AnySymbolicEvent:
         self.mask = mask
         self.hide_mask = hide_mask
 
-    def arg_list(self, *q: Variable, args: Iterable[Variable], stack: bool):
+    def arg_list(self, *q: Symbol, args: Iterable[Symbol], stack: bool):
         return dict(q=ContainerLowLevel(_vec(stack), *q), args=ContainerLowLevel(_vector, *args))
 
-    def init_code(self, var_name, scalar_type: str, t: Variable, *q: Variable, args: Iterable[Variable], stack=True)->str:...
+    def init_code(self, var_name, scalar_type: str, t: Symbol, *q: Symbol, args: Iterable[Symbol], stack=True)->str:...
 
 
 class SymbolicEvent(AnySymbolicEvent):
@@ -154,7 +156,7 @@ class OdeSystem:
     _int_all_func = None
     _compiled_odes: dict[tuple, LowLevelODE] = dict()
 
-    def __init__(self, ode_sys: Iterable[Expr], t: Variable, *q: Variable, args: Iterable[Variable] = (), events: Iterable[AnySymbolicEvent]=()):
+    def __init__(self, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
         self.ode_sys = tuple(ode_sys)
         self.args = tuple(args)
         self.t = t
@@ -256,7 +258,7 @@ class OdeSystem:
         return temp_module.get_ode
 
 
-def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Variable, q: Iterable[Variable], delq: Iterable[Variable], args: Iterable[Variable] = (), events: Iterable[SymbolicEvent]=(), stop_events: Iterable[SymbolicStopEvent]=()):
+def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=(), stop_events: Iterable[SymbolicStopEvent]=()):
         n = len(ode_sys)
         ode_sys = tuple(ode_sys)
         var_odesys = []

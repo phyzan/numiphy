@@ -24,6 +24,9 @@ class Grid:
 
     def __eq__(self, other: Grid):
         return self.grids == other.grids
+    
+    def __hash__(self):
+        return hash((self.__class__,) + self.grids)
 
     def __getitem__(self, i: int):
         return self.grids[i]
@@ -372,6 +375,16 @@ class Grid1D(Grid):
     findiff: fds.Fin_Derivative
 
 
+    def __hash__(self):
+        return hash((self.__class__,)+self.hashable_content)
+    
+    def __eq__(self, other: Grid):
+        if isinstance(other, Grid1D):
+            return (self.__class__,) + self.hashable_content == (other.__class__,) + other.hashable_content
+        else:
+            return False
+
+
     def node(self, coord: float):
         '''
         e.g. coords = (x, y, z) for 3D
@@ -396,6 +409,10 @@ class Grid1D(Grid):
     def grids(self):
         return self,
 
+    @property
+    def hashable_content(self):
+        return (self.limits, self.n, self.periodic)
+
 
 class Uniform1D(Grid1D):
 
@@ -414,13 +431,7 @@ class Uniform1D(Grid1D):
         self.n = n-periodic
         self.n_full = n
         self.findiff = fds.UniformFinDiff(n, self.dx, periodic)
-        
 
-    def __eq__(self, other):
-        if isinstance(other, Uniform1D):
-            return self.limits == other.limits and self.periodic == other.periodic and self.n == other.n
-        else:
-            return False
 
     def node(self, coord: float):
         '''
@@ -468,12 +479,6 @@ class Logarithmic1D(Grid1D):
         self.n_full = n
         self.findiff = fds.FinDiff(self.x_full[0], periodic)
 
-    def __eq__(self, other):
-        if isinstance(other, Logarithmic1D):
-            return self.limits == other.limits and self.periodic == other.periodic and self.n == other.n
-        else:
-            return False
-
     def as_not_periodic(self, *axis):
         if axis:
             assert axis[0] == 0
@@ -504,12 +509,6 @@ class Unstructured1D(Grid1D):
         self.n_full = len(x)
         self.findiff = fds.FinDiff(x, periodic)
 
-    def __eq__(self, other):
-        if isinstance(other, Unstructured1D):
-            return self.x == other.x and self.periodic == other.periodic
-        else:
-            return False
-
     def as_not_periodic(self, *axis):
         if axis:
             assert axis[0] == 0
@@ -522,6 +521,10 @@ class Unstructured1D(Grid1D):
     
     def with_periodicity(self, Bool: bool):
         return Unstructured1D(*self.x_full, periodic=Bool)
+    
+    @property
+    def hashable_content(self):
+        return (self.x, self.periodic)
 
 
 class InterpedArray:

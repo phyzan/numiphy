@@ -1,20 +1,20 @@
-from .symexpr import *
+from .symcore import *
 import numpy as np
 import math, cmath
-from ..conditional import Boolean
+from .boolean import Boolean
 from typing import Iterable
 
 
 class Container:
 
-    def __init__(self, array_type: str, *args: Variable):
+    def __init__(self, array_type: str, *args: Symbol):
         self.array_type = array_type
         self.args = args
     
     def as_argument(self, scalar_type: str, name: str)->str:...
     
-    def map(self, array_name: str)->dict[Variable, Variable]:
-        return {self.args[i]: Variable(f'{array_name}[{i}]') for i in range(len(self.args))}
+    def map(self, array_name: str)->dict[Symbol, Symbol]:
+        return {self.args[i]: Symbol(f'{array_name}[{i}]') for i in range(len(self.args))}
     
     def converted(self, expr: Expr, array_name: str):
         return expr.replace(self.map(array_name))
@@ -35,7 +35,7 @@ class ContainerLowLevel(Container):
 
 class _CallableFunction:
 
-    def __init__(self, *args: Variable, **containers: Container):
+    def __init__(self, *args: Symbol, **containers: Container):
         self.args = args
         self.containers = containers
 
@@ -61,7 +61,7 @@ class _BooleanCallable(_CallableFunction):
 
     expr: Boolean
 
-    def __init__(self, expr: Boolean, *args: Variable, **containers: PyContainer):
+    def __init__(self, expr: Boolean, *args: Symbol, **containers: PyContainer):
         self.expr = expr
         _CallableFunction.__init__(self, *args, **containers)
 
@@ -79,7 +79,7 @@ class _BooleanCallable(_CallableFunction):
 
 class _ScalarCallable(_CallableFunction):
 
-    def __init__(self, expr: Expr, *args: Variable, **containers: ContainerLowLevel):
+    def __init__(self, expr: Expr, *args: Symbol, **containers: ContainerLowLevel):
         self.expr = expr
         _CallableFunction.__init__(self, *args, **containers)
 
@@ -95,7 +95,7 @@ class _ScalarCallable(_CallableFunction):
 
 class _VectorCallable(_CallableFunction):
 
-    def __init__(self, array_type: str, array: Iterable[Expr], *args: Variable, **containers: ContainerLowLevel):
+    def __init__(self, array_type: str, array: Iterable[Expr], *args: Symbol, **containers: ContainerLowLevel):
         self.array_type = array_type
         self.array = array
         _CallableFunction.__init__(self, *args, **containers)
@@ -168,7 +168,7 @@ def _multidim_lambda_list(arg, lib:str):
     else:
         raise ValueError(f"Item of type '{arg.__class__}' not supported for lambdifying")
 
-def lambdify(*expr: Expr, symbols: list[Variable], lib='math'):
+def lambdify(*expr: Expr, symbols: list[Symbol], lib='math'):
     if len(expr) == 1:
         code = ScalarPythonCallable(*expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
     else:
@@ -180,7 +180,7 @@ def lambdify(*expr: Expr, symbols: list[Variable], lib='math'):
 
 class ScalarLambdaExpr:
 
-    def __init__(self, expr: Expr, *symbols: Variable):
+    def __init__(self, expr: Expr, *symbols: Symbol):
         self.expr = expr
         self.symbols = symbols
         self._callable = self.expr.lambdify(symbols, lib='numpy')
@@ -197,7 +197,7 @@ class ScalarLambdaExpr:
 
 class VectorLambdaExpr:
 
-    def __init__(self, expr: list, *symbols: Variable):
+    def __init__(self, expr: list, *symbols: Symbol):
         self.expr = expr
         self.symbols = symbols
         self.code = f"np.array({_multidim_lambda_list(expr, lib="math")})"

@@ -2,8 +2,7 @@ from __future__ import annotations
 from typing import Callable
 from ..findiffs import grids
 from . import bounds
-# from .. import symbolic as sym
-from ..symlib import operators as sym
+from ..symlib import symcore as sym
 from . import cached
 from ..toolkit import tools
 from .. import odesolvers as ods

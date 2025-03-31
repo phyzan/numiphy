@@ -12,7 +12,7 @@ from numiphy.symlib.geom import Line2D, Circle
 class VectorField2D:
 
 
-    def __init__(self, Fx: sym.Expr, Fy: sym.Expr, x:sym.Variable, y:sym.Variable, *args: sym.Variable):
+    def __init__(self, Fx: sym.Expr, Fy: sym.Expr, x:sym.Symbol, y:sym.Symbol, *args: sym.Symbol):
         symbols = []
         for xi in (x, y)+args:
             if xi in symbols:

@@ -1,23 +1,21 @@
 from .symcore import *
-from .symcore import _Add, _Mul, _Integer, _Complex, _Expr
 from typing import Callable
 import math, cmath, numpy as np
 
 
-class _Mathfunc(Node):
+class Mathfunc(Expr):
     
     name: str
     npfunc: Callable[..., np.ndarray]
 
     def __new__(cls, arg, simplify = True):
-        arg = cls._asexpr(arg)
-        cls._allows(arg)
+        arg = asexpr(arg)
+        if arg.is_operator:
+            raise NotImplementedError('')
         if simplify is True:
-            obj = cls.mathsimp(arg)
+            return cls.mathsimp(arg)
         else:
-            obj = super().__new__(cls)
-            obj.Args = (arg,)
-        return obj
+            return Expr.__new__(cls, arg)
     
     @classmethod
     def eval_at(cls, value):
@@ -31,7 +29,7 @@ class _Mathfunc(Node):
             return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
         
         base = f"{self.name}({self.Arg.repr(lib)})"
-        if lib == 'math' and self.contains_type(_Complex):
+        if lib == 'math' and self.contains_type(Complex):
             return 'cmath.'+base
         else:
             return f'{lib}.{base}'
@@ -39,163 +37,167 @@ class _Mathfunc(Node):
     def lowlevel_repr(self, scalar_type='double'):
         return f"{self.name}({self.Arg.lowlevel_repr(scalar_type)})"
 
-    def _diff_unchained(self)->_Expr:...
+    def _diff_unchained(self)->Expr:
+        raise NotImplementedError('')
 
     def _diff(self, var):
         return self._diff_unchained() * self.Arg._diff(var)
 
-    @classmethod
-    def _allows(cls, arg: _Expr)->None:...
-
     @property
-    def Arg(self):
+    def Arg(self)->Expr:
         return self.args[0]
 
     def get_ndarray(self, x, **kwargs):
         return self.npfunc(self.Arg.get_ndarray(x, **kwargs))
 
     @classmethod
-    def mathsimp(cls, arg: _Expr)->_Expr:
+    def mathsimp(cls, arg: Expr)->Expr:
         return cls(arg, simplify=False)
 
 
-class _Sin(_Mathfunc):
+class sin(Mathfunc):
 
     name = 'sin'
     npfunc = np.sin
     s=1
+    _priority = 26
 
     @classmethod
-    def mathsimp(cls, arg: _Expr)->_Expr:
-        pi = cls.S.pi
-        if isinstance(arg, _Add):
+    def mathsimp(cls, arg: Expr)->Expr:
+        pi = S.pi
+        if isinstance(arg, Add):
             for i in range(len(arg.args)):
                 if arg.args[i].isNumber:
                     n = arg.args[i]/(pi/2)
-                    if isinstance(n, _Integer):
+                    if isinstance(n, Integer):
                         n = n.value
-                        newarg = cls._add(*arg.args[:i], *arg.args[i+1:], simplify=False)
+                        newarg = Add(*arg.args[:i], *arg.args[i+1:], simplify=False)
                         if n % 2 == 0:
                             trigpart = cls(newarg, simplify=False)
                             coef = (-1)**(n//2)
                         else:
-                            trigpart = cls._cos(newarg, simplify=False)
+                            trigpart = cos(newarg, simplify=False)
                             coef = (-1)**((n-1)//2)
                         return coef*trigpart
-        if isinstance(arg / cls.S.pi, _Integer):
-            return cls.S.Zero
-        k = arg/(cls.S.pi/2)
-        if isinstance(k, _Integer):
+        if isinstance(arg / S.pi, Integer):
+            return S.Zero
+        k = arg/(S.pi/2)
+        if isinstance(k, Integer):
             k = k.value
-            return cls._asexpr((-1)**((k-1)//2))
+            return asexpr((-1)**((k-1)//2))
         elif arg.sgn == -1:
             return -cls(arg.neg())
         else:
             return cls(arg, simplify=False)
     
     @classmethod
-    def addrule(cls, arg: _Expr):
-        if isinstance(arg, _Add):
+    def addrule(cls, arg: Expr):
+        if isinstance(arg, Add):
             x = arg.args[0]
-            y = cls._add(*arg.args[1:], simplify=False)
-            return cls._cos(y)*cls._sin(x) + cls._cos(x)*cls._sin(y)
+            y = Add(*arg.args[1:], simplify=False)
+            return cos(y)*sin(x) + cos(x)*sin(y)
         else:
-            return cls._sin(arg)
+            return sin(arg)
 
     @classmethod
     def split_intcoef(cls, arg):
-        if isinstance(arg, _Mul):
-            if isinstance(arg.args[0], _Integer):
+        if isinstance(arg, Mul):
+            if isinstance(arg.args[0], Integer):
                 n = abs(arg.args[0].value)
-                x = cls._mul(int(np.sign(arg.args[0].value)), *arg.args[1:])
+                x = Mul(int(np.sign(arg.args[0].value)), *arg.args[1:])
                 adds = []
                 for m in range(int((n-1)/2)+1):
-                    adds.append(cls._mul((-1)**m, cls._rat(*_bin(n, 2*m+1)), cls._sin(x)**(2*m+1)*cls._cos(x)**(n-2*m-1)))
-                return cls._add(*adds)
-        return cls._sin(arg)
+                    adds.append(Mul((-1)**m, Rational(*_bin(n, 2*m+1)), sin(x)**(2*m+1)*cos(x)**(n-2*m-1)))
+                return Add(*adds)
+        return sin(arg)
     
     def _diff_unchained(self):
-        return self._cos(self.Arg)
+        return cos(self.Arg)
 
 
-class _Cos(_Mathfunc):
+class cos(Mathfunc):
 
     name = 'cos'
     npfunc = np.cos
+    _priority = 27
         
     @classmethod
-    def mathsimp(cls, arg: _Expr)->_Expr:
+    def mathsimp(cls, arg: Expr)->Expr:
         if arg.sgn == -1:
             return cls(arg.neg())
-        arg = arg+cls.S.pi/2
-        sinarg: _Sin = cls._sin(0, simplify=False) #only to grab the sin class
+        arg = arg+S.pi/2
+        sinarg = sin(0, simplify=False) #only to grab the sin class
         return sinarg.mathsimp(arg)
 
     @classmethod
-    def addrule(cls, arg: _Expr):
-        if isinstance(arg, _Add):
+    def addrule(cls, arg: Expr):
+        if isinstance(arg, Add):
             x = arg.args[0]
-            y = cls._add(*arg.args[1:], simplify=False)
-            return cls._cos(x)*cls._cos(y) - cls._sin(x)*cls._sin(y)
+            y = Add(*arg.args[1:], simplify=False)
+            return cos(x)*cos(y) - sin(x)*sin(y)
         else:
-            return cls._cos(arg)
+            return cos(arg)
 
     @classmethod
     def split_intcoef(cls, arg):
-        if isinstance(arg, _Mul):
-            if isinstance(arg.args[0], _Integer):
+        if isinstance(arg, Mul):
+            if isinstance(arg.args[0], Integer):
                 n = abs(arg.args[0].value)
-                x = cls._mul(int(np.sign(arg.args[0].value)), *arg.args[1:])
+                x = Mul(int(np.sign(arg.args[0].value)), *arg.args[1:])
                 adds = []
                 for m in range(int(n/2)+1):
-                    adds.append(cls._mul((-1)**m, cls._rat(*_bin(n, 2*m)), cls._sin(x)**(2*m)*cls._cos(x)**(n-2*m)))
-                return cls._add(*adds)
-        return cls._cos(arg)
+                    adds.append(Mul((-1)**m, Rational(*_bin(n, 2*m)), sin(x)**(2*m)*cos(x)**(n-2*m)))
+                return Add(*adds)
+        return cos(arg)
     
     def _diff_unchained(self):
-        return -self._sin(self.Arg)
+        return -sin(self.Arg)
 
 
-class _Exp(_Mathfunc):
+class exp(Mathfunc):
 
     name = 'exp'
     npfunc = np.exp
+    _priority = 28
 
     def _diff_unchained(self):
         return self
     
-    def powargs(self) -> tuple[_Expr, _Expr]:
-        return self._exp(self.S.One), self.Arg
+    def powargs(self) -> tuple[Expr, Expr]:
+        return exp(S.One), self.Arg
 
     def raiseto(self, power):
         return self.init(self.Arg*power)
 
 
-class _Log(_Mathfunc):
+class log(Mathfunc):
 
     name = 'log'
     npfunc = np.log
+    _priority = 29
 
     def _diff_unchained(self):
         return 1/self.Arg
 
 
-class _Tan(_Mathfunc):
+class tan(Mathfunc):
 
     name = 'tan'
     npfunc = np.tan
+    _priority = 30
 
     def _diff_unchained(self):
-        return 1/self._cos(self.Arg)**2
+        return 1/cos(self.Arg)**2
 
 
-class _Abs(_Mathfunc):
+class Abs(Mathfunc):
 
     name = 'abs'
     npfunc = np.abs
+    _priority = 31
 
     def _diff(self, var):
-        return self._derivative(self, var)
+        return Derivative(self, var)
 
     def repr(self, lib=""):
         return f'abs({self.Arg.repr(lib)})'
@@ -205,16 +207,17 @@ class _Abs(_Mathfunc):
         return abs(value)
 
 
-class _Real(_Mathfunc):
+class Real(Mathfunc):
 
     name = 'real'
     npfunc = np.real
+    _priority = 32
 
     @classmethod
-    def mathsimp(cls, arg)->_Expr:
+    def mathsimp(cls, arg)->Expr:
         if arg.isRealNumber:
             return arg
-        elif isinstance(arg, _Complex):
+        elif isinstance(arg, Complex):
             return arg.real
         else:
             return cls(arg, simplify=False)
@@ -236,16 +239,17 @@ class _Real(_Mathfunc):
         return getattr(value, 'real')
 
 
-class _Imag(_Mathfunc):
+class Imag(Mathfunc):
 
     name = 'imag'
     npfunc = np.imag
+    _priority = 33
 
     @classmethod
-    def mathsimp(cls, arg)->_Expr:
+    def mathsimp(cls, arg)->Expr:
         if arg.isRealNumber:
-            return cls.S.Zero
-        elif isinstance(arg, _Complex):
+            return S.Zero
+        elif isinstance(arg, Complex):
             return arg.imag
         else:
             return cls(arg, simplify=False)

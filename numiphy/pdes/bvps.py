@@ -2,8 +2,7 @@ from __future__ import annotations
 from typing import Callable
 from ..findiffs import grids
 from . import bounds
-from ..symlib import operators as ops
-from ..symlib import expressions as sym
+from ..symlib import symcore as ops
 import scipy.sparse.linalg as spl
 import numpy as np
 
@@ -11,7 +10,7 @@ import numpy as np
 
 class LinearBVP:
 
-    def __init__(self, op: ops.Operator, bcs: bounds.GroupedBcs, grid: grids.Grid):
+    def __init__(self, op: ops.Expr, bcs: bounds.GroupedBcs, grid: grids.Grid):
         bcs.apply_grid(grid)
         self.grid = bcs.grid
         self.bcs = bcs
@@ -23,12 +22,12 @@ class LinearBVP:
 
     def get_ScalarField(self, name: str, acc=1, fd='central'):
         res = self.solve(acc, fd)[-1]
-        return sym.ScalarField(res, self.grid, name, self.op.variables)
+        return ops.ScalarField(res, self.grid, name, self.op.variables)
     
 
 class InhomLinearBVP(LinearBVP):
 
-    def __init__(self, op: ops.Operator, bcs: bounds.GroupedBcs, grid: grids.Grid, source: Callable[..., np.ndarray]):
+    def __init__(self, op: ops.Expr, bcs: bounds.GroupedBcs, grid: grids.Grid, source: Callable[..., np.ndarray]):
 
         super().__init__(op, bcs, grid)
         self._source = source

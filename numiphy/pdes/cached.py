@@ -1,4 +1,4 @@
-from .. symlib import operators as ops
+from .. symlib import symcore as ops
 from ..findiffs import grids
 from ..toolkit import tools
 from . import bounds
@@ -157,7 +157,7 @@ class CachedVar(CachedOperator):
         return val * sp.identity(grid.n-self.n_ded, format='csr')
     
 
-def cache_operator(op: ops.Operator, grid: grids.Grid, bcs: bounds.GroupedBcs=None, acc=1, fd='central')->CachedOperator:
+def cache_operator(op: ops.Expr, grid: grids.Grid, bcs: bounds.GroupedBcs=None, acc=1, fd='central')->CachedOperator:
     if bcs is not None:
         if not bcs.is_homogeneous:
             raise ValueError('Boundary conditions that are given as input in order to cache an operator need to be homogeneous, so that matrices can be reduced accordingly')

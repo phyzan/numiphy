@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
+import scipy.sparse as sp
 from ..findiffs import grids
 from ..findiffs.grids import InterpedArray
 from ..toolkit import tools
@@ -9,52 +10,57 @@ from typing import Type, Dict, Self
 import itertools
 from functools import cached_property
 import math
+import uuid
 
 
 
-class _Expr:
+class Expr:
 
+    _args: tuple #the only object attribute
+    _priority: int #class attribute
     repr_priority = 3
-    is_symexpr = False
-    is_operator = False
-    is_analytical_expression = True
-    S: _Singleton
+
+
+    def __new__(cls, *args):
+        obj = object.__new__(cls)
+        obj._args = args
+        return obj
 
     def __add__(self, other):
-        return self._add(self, self._asexpr(other))
+        return Add(self, asexpr(other))
     
     def __sub__(self, other):
-        return self._add(self, -self._asexpr(other))
+        return Add(self, -asexpr(other))
     
     def __mul__(self, other):
-        return self._mul(self, self._asexpr(other))
+        return Mul(self, asexpr(other))
     
     def __truediv__(self, other):
-        return self._mul(self, self._asexpr(other)**-1)
+        return Mul(self, asexpr(other)**-1)
     
     def __pow__(self, other):
-        return self._pow(self, self._asexpr(other))
+        return Pow(self, asexpr(other))
     
     def __neg__(self):
         return -1*self
     
     def __radd__(self, other):
-        return self._asexpr(other) + self
+        return asexpr(other) + self
     
     def __rsub__(self, other):
-        return self._asexpr(other) - self
+        return asexpr(other) - self
     
     def __rmul__(self, other):
-        return self._asexpr(other) * self
+        return asexpr(other) * self
     
     def __rtruediv__(self, other):
-        return self._asexpr(other) / self
+        return asexpr(other) / self
     
     def __rpow__(self, other):
-        return self._asexpr(other) ** self
+        return asexpr(other) ** self
     
     def __abs__(self):
-        return self._abs(self)
+        return Abs(self)
     
     def __gt__(self, other):
         return Gt(self, other)
@@ -74,243 +80,67 @@ class _Expr:
     def __str__(self):
         return self.repr(lib='')
     
-    def __hash__(self):
-        return 1 # hashing must be determined by equality
-
     def __eq__(self, other):
-        other = self._asexpr(other)
-        if type(other) is type(self):
-            return self._equals(other)
-        elif isinstance(other, _Any):
-            return other == self
-        return False
+        other = asexpr(other)
+        if other is self:
+            return True
+        elif other.__class__ == self.__class__:
+            return self._args == other._args
+        else:
+            return False
     
-    @classmethod
-    def _all_compatible(cls, *expr: _Expr):...
+    def __hash__(self):
+        return hash((self.__class__,) + self._hashable_content)
 
-    @classmethod
-    def _asexpr(cls, arg)->_Expr:...# also checks if it is operator or not e.g.
-    
-    @classmethod
-    def _add(cls, *args, simplify=True)->_Expr:...# return Add.init(...)
-
-    @classmethod
-    def _mul(cls, *args, simplify=True)->_Expr:...
-
-    @classmethod
-    def _pow(cls, base, power, simplify=True)->_Expr:...
-
-    @classmethod
-    def _sin(cls, arg: _Expr, simplify=True)->_Expr:...
-
-    @classmethod
-    def _cos(cls, arg: _Expr, simplify=True)->_Expr:...
-
-    @classmethod
-    def _exp(cls, arg: _Expr, simplify=True)->_Expr:...
-
-    @classmethod
-    def _log(cls, arg: _Expr, simplify=True)->_Expr:...
-
-    @classmethod
-    def _tan(cls, arg: _Expr, simplify=True)->_Expr:...
-
-    @classmethod
-    def _abs(cls, arg: _Expr, simplify=True)->_Expr:...
-
-    @classmethod
-    def _rat(cls, m: int, n: int)->_Expr:...
-
-    @classmethod
-    def _derivative(cls, f: _Expr, *vars: _Symbol, simplify=True)->_Expr:...
-
-    @classmethod
-    def _subs(cls, expr: _Expr, vals: Dict[_Expr, _Expr], simplify=True)->_Expr:...
-
-    @classmethod
-    def _dummy(cls, arr: np.ndarray, grid: grids.Grid, *vars: _Symbol)->_DummyScalarField:...
-
-    def _diff(self, var: _Symbol):
-        return self._derivative(self, var)
-    
-    def _equals(self, other: Type[Self])->bool: #other must be same class as self
-        return self.Args == other.Args
+    @cached_property
+    def is_operator(self)->bool:
+        return self.contains_type(Diff)
 
     @property
-    def args(self)->tuple[_Expr, ...]:
-        return self.Args
+    def args(self):
+        return self._args
     
     @property
-    def is_AbstractFunction(self):
-        return isinstance(self, _Function)
+    def branches(self):
+        return tuple([arg for arg in self._args if isinstance(arg, Expr)])
     
     @property
-    def is_MathFunction(self):
-        return isinstance(self, _Mathfunc)
-
-    def makenew(self, changefunc: str, *args, **kwargs)->_Expr:
-        return self.init(*[getattr(arg, changefunc)(*args, **kwargs) for arg in self.args])
+    def atoms(self)->tuple[Atom,...]:
+        '''
+        performs a full search in all branches, and reaches to the outer edges where the Atoms lie
+        '''
+        return self.deepsearch()
     
-    def varsub(self, data: dict[_Symbol, _Symbol]):
-        newArgs = []
-        for arg in self.Args:
-            if isinstance(arg, _Symbol) and arg in data:
-                newArgs.append(data[arg])
-            elif isinstance(arg, _Expr):
-                newArgs.append(arg.varsub(data))
-            else:
-                newArgs.append(arg)
-        return self.__class__(*newArgs)
-
-
-    def is_const_wrt(self, x: _Symbol):
-        return x not in self.variables
-
-    def doit(self, deep=True):
-        if deep:
-            return self.makenew('doit', deep=True)
-        else:
-            return self.init(*[arg for arg in self.args], simplify=True)#simply reinstanciate simplified, no need for makenew
-
-    def repr(self, lib = "")->str:...
-
-    def lowlevel_repr(self, scalar_type="double")->str:...
-
-    def get_ndarray(self, x: Dict[_Symbol, np.ndarray], **kwargs)->np.ndarray:...
-
-    def ndarray(self, varorder: list[_Symbol], grid: grids.Grid, acc=1, fd='central')->np.ndarray:
-        return self.get_ndarray({x: arr for x, arr in zip(varorder, grid.x)}, acc=acc, fd=fd)
-
-    def body(self):
-        return self
-    
-    def coef(self):
-        return self.S.One
-    
-    def addargs(self):
-        return self,
-
-    def mulargs(self):
-        return self,
-
-    def powargs(self)->tuple[_Expr, _Expr]:
-        return self, self.S.One
-
-    def neg(self)->_Expr:
-        return -self
-
-    def _repr_from(self, arg: str, oper: Type[Operation], lowlevel=False)->str:
-        base = self.repr(arg) if not lowlevel else self.lowlevel_repr(arg)
-        if oper.repr_priority <= self.repr_priority:
-            return base
-        else:
-            return f'({base})'
-
-    def replace(self, items: Dict[_Expr, _Expr])->_Expr:
-        if self in items:
-            return self._asexpr(items[self])
-        elif isinstance(self, Operation):
-            obj = self.makenew('replace', items)
-            if obj != self:
-                return obj
-            else:
-                rest = items.copy()
-                while rest:
-                    f, val = rest.popitem()
-                    if type(f) is type(self):
-                        q = self.includes(*f.args)
-                        if q:
-                            return self.argsub(val, *q).replace(rest)
-                return self
-        elif isinstance(self, Node):
-            return self.makenew('replace', items)
-        else:
-            return self
-
-    def subs(self, vals: Dict[_Expr, _Expr]):
-        res = self._subs(self, vals)
-        if isinstance(res, _Subs):
-            return res.doit(deep=False)
-        else:
-            return res
-
-    def diff(self, var: _Symbol, order=1)->_Expr:
-        res = self._derivative(self, *(order*[var]))
-        if isinstance(res, _Derivative):
-            return res.doit(deep=False)
-        else:
-            return res
-    
-    def eval(self)->_Expr:
-        if isinstance(self, _Number):
-            return self._asexpr(self.value)
-        elif isinstance(self, _Mathfunc):
-            arg = self.args[0].eval()
-            if isinstance(arg, _Number):
-                return self._asexpr(self.eval_at(arg.value))
-            else:
-                return self.init(arg)
-        elif isinstance(self, Operation):
-            args = [arg.eval() for arg in self.args]
-            if isinstance(self, _Pow):
-                a, b = self.base.eval(), self.power.eval()
-                if isinstance(a, _Number) and isinstance(b, _Number):
-                    return self._asexpr(a.value**b.value)
-                else:
-                    return self._pow(a, b)
-            else:
-                nums, rest = [], []
-                for arg in args:
-                    if isinstance(arg, _Number):
-                        nums.append(arg.value)
-                    else:
-                        rest.append(arg)
-                return self.init(self.matheval(*nums), *rest)
-        elif isinstance(self, (_Derivative, _Integral)):
-            return self.init(self.f.eval())
-        elif isinstance(self, _Piecewise):
-            return self.makenew('eval')
-        elif isinstance(self, _Subs) and self.isNumber:
-            return self._asexpr(float(self.get_ndarray({})))
-        else:
-            return self
-    
-    def get_grids(self, var: _Symbol)->tuple[grids.Grid1D]:
-        gs: list[grids.Grid1D] = []
-        items = self.deepsearch()
-        for item in items:
-            if hasattr(item, 'grid') and var in item.variables:
-                g: grids.Grid = getattr(item, 'grid')
-                if g not in gs:
-                    gs.append(g[item.variables.index(var)])
-        return tuple(gs)
-    
-    @property
-    def nd(self):
-        return len(self.variables)
+    @cached_property
+    def symbols(self)->tuple[Symbol, ...]:
+        res = ()
+        for x in self.atoms:
+            if isinstance(x, Symbol) and x not in res:
+                res += (x,)
+        return tools.sort(res, [Hashable(x) for x in res])[0]
     
     @cached_property
     def isNumber(self):
-        return len(self.variables) == 0
+        return len(self.variables) == 0 and not self.is_operator
 
     @property
     def isRealNumber(self):
         n = self.eval()
-        if isinstance(n, _Number):
-            return not isinstance(n, _Complex)
+        if isinstance(n, Number):
+            return not isinstance(n, Complex)
         else:
             return False
         
     @property
     def isPosInt(self):
-        if isinstance(self, _Integer):
+        if isinstance(self, Integer):
             if self.value > 0:
                 return True
         return False
 
     @property
     def isNegInt(self):
-        if isinstance(self, _Integer):
+        if isinstance(self, Integer):
             if self.value < 0:
                 return True
         return False
@@ -318,95 +148,118 @@ class _Expr:
     @cached_property
     def sgn(self):
         return 1
-
-    @cached_property
-    def variables(self)->tuple[_Symbol,...]:
-        '''
-        All _Symbol objects that the expression has algebraic dependence wrt.
-        Those might not explicitly appear inside the expression as objects.
-        E.g a _ScalarField object f(x, y) has no analytic expression wrt to x, y,
-        but f.variables returns (x, y).
-        '''
-
-
-        if isinstance(self, _Function):
-            return self._variables
-        elif isinstance(self, _Symbol):
-            return self,
-        elif isinstance(self, _Subs):
-            return tuple([x for x in self.expr.variables if x not in self.vals])
-        elif isinstance(self, _Integral):
-            if self.symbol in self.f.variables:
-                return self.f.variables
-            else:
-                return *self.f.variables, self.symbol
-        elif isinstance(self, _Number):
-            return ()
-        else:
-            x_all: list[_Symbol] = []
-            for arg in self.args:
-                vars = arg.variables
-                for v in vars:
-                    if v not in x_all:
-                        x_all.append(v)
-            return tuple(x_all)
     
-    def expand(self)->_Expr:
-        return self
+    def _remake_branches(self, filter: Type[Expr], attr: str, *args, **kwargs):
+        '''
+        same as init, but only targets the filtered objects in args,
+        and replaces them with arg.attr(*args, **kwargs)
+        '''
+        newargs = list(self._args)
+        for i in range(len(self._args)):
+            arg = newargs[i]
+            if isinstance(arg, filter):
+                newargs[i] = getattr(arg, attr)(*args, **kwargs)
+        return self.init(*newargs, simplify=True)
+    
+    def _replace(self, items: dict[Expr, Expr]):
+        '''
+        different from .replace()
+        '''
+        if self in items:
+            return items[self]
+        else:
+            return self._remake_branches(Expr, '_replace', items)
 
-    def deepsearch(self, mask: Type[Atom] = None, full=False)->tuple[Atom,...]:
-        '''
-        Gathers all outer Atom objects of the tree structure from .args of each node.
-        TODO: In future implement 2 more different deepsearch options:
-        1) only search nodes up to operation level
-        2) search through all Node objects, up to the level of non-analytically expressed objects (e.g. dont look inside a Derivative or Integral object)
-        '''
+    def diff(self, var: Symbol, order=1)->Expr:
+        res = Derivative(self, *(order*[var]))
+        if isinstance(res, Derivative):
+            return res.doit(deep=False)
+        else:
+            return res
+        
+    def deepsearch(self, mask: Type[Expr] = None)->tuple[Expr,...]:
+
         if mask is not None:
-            if not issubclass(mask, Atom):
-                raise ValueError("The mask argument needs to be subclass of Atom (not containing any other expressions)")
             msk = mask
         else:
-            msk = _Expr
-        
-        if isinstance(self, Atom):
-            return (self,) if isinstance(self, msk) else ()
-        elif full:
-            container = self.Args
-        else:
-            container = self.args
+            msk = Atom
 
-        args: tuple[Atom,...] = ()
-        for arg in container:
-            if isinstance(arg, Node):
-                args += arg.deepsearch(mask)
-            elif isinstance(arg, msk):#Atom
+        if isinstance(self, msk):
+            return (self,) if isinstance(self, msk) else ()
+
+        args: tuple[Expr,...] = ()
+        for arg in self.branches:
+            if isinstance(arg, msk):
                 args += (arg,)
+            else:
+                args += arg.deepsearch(msk)
         return args
-    
 
     def contains_type(self, cls: Type):
+        '''
+        goes through al branches
+        '''
         if isinstance(self, cls):
             return True
         else:
-            for arg in self.args:
+            for arg in self.branches:
                 if arg.contains_type(cls):
                     return True
             return False
-
-    def init(self, *args, simplify=True)->_Expr:...
-
-    def array(self, varorder: list[_Symbol], grid: grids.Grid, acc=1, fd='central'):
-        return self.ndarray(varorder, grid, acc, fd).flatten(order='F')
     
-    def integral(self, varorder: list[_Symbol], grid: grids.Grid, acc=1, fd='central'):
-        return tools.full_multidim_simpson(self.ndarray(varorder, grid, acc, fd), *grid.x)
+    def ndarray(self, grid: grids.Grid, acc=1, fd='central')->np.ndarray:
+        return self.get_ndarray({x: arr for x, arr in zip(sort_by_hash(*self.variables), grid.x)}, acc=acc, fd=fd)
+    
+    def array(self, grid: grids.Grid, acc=1, fd='central'):
+        return self.ndarray(grid, acc, fd).flatten(order='F')
+    
+    def varsub(self, data: dict[Symbol, Symbol]):
+        for (x, v) in data.items():
+            if not isinstance(x, Symbol) or not isinstance(v, Symbol):
+                raise ValueError('')
+        return self._replace(data)
+    
+    def is_const_wrt(self, x: Symbol):
+        return x not in self.variables
+    
+    def lambdify(self, varnames, lib='math'):
+        return lambdify(self, symbols=varnames, lib=lib)
 
-    def dummify(self, varorder=None, grid: grids.Grid=None, acc=1, fd='central'):
-        if varorder is None:
-            varorder = self.variables
+    def powsimp(self):
+        return powsimp(self)
+
+    def trigexpand(self):
+        return trigexpand(self)
+    
+    def split_trig(self):
+        return split_trig(self)
+
+    def split_int_trigcoefs(self):
+        return split_int_trigcoefs(self)
+    
+    def get_grids(self, var: Symbol)->tuple[grids.Grid1D]:
+        gs: list[grids.Grid1D] = []
+        for item in self.atoms:
+            if hasattr(item, 'grid') and var in item.variables:
+                g: grids.Grid = getattr(item, 'grid')
+                if g not in gs:
+                    gs.append(g[item.variables.index(var)])
+        return tuple(gs)
+    
+    def subs(self, vals: Dict[Symbol, Expr])->Expr:
+        res = Subs(self, vals)
+        if isinstance(res, Subs):
+            return res.doit(deep=False)
+        else:
+            return res
+
+    def integral(self, grid: grids.Grid, acc=1, fd='central'):
+        return tools.full_multidim_simpson(self.ndarray(grid, acc, fd), *grid.x)
+
+    def dummify(self, grid: grids.Grid=None, acc=1, fd='central'):
         if grid is None:
             gs = []
-            for x in varorder:
+            for x in self.variables:
                 g = self.get_grids(x)
                 if len(g) == 1:
                     gs.append(g[0])
@@ -414,185 +267,379 @@ class _Expr:
                     raise ValueError(f'No 1D-grid along the {x} variable inside the expression to dummify')
             grid = grids.NdGrid(*gs)
         
-        return self._dummy(self.ndarray(varorder, grid, acc, fd), grid, *varorder)
+        return DummyScalarField(self.ndarray(grid, acc, fd), grid, *self.variables)
 
-
-    def plot(self, varorder: list[_Symbol], grid: grids.Grid, acc=1, fd='central', ax=None, **kwargs):
-        return plot(self.ndarray(varorder, grid, acc, fd), grid, ax, **kwargs)
+    def plot(self, grid: grids.Grid, acc=1, fd='central', ax=None, **kwargs):
+        return plot(self.ndarray(grid, acc, fd), grid, ax, **kwargs)
     
-    def animate(self, var: _Symbol, varorder: list[_Symbol], duration: float, save: str, grid: grids.Grid, display = True, **kwargs):
+    def animate(self, var: Symbol, duration: float, save: str, grid: grids.Grid, display = True, **kwargs):
         if 'fps' in kwargs:
             fps = kwargs['fps']
             del kwargs['fps']
             grid = grid.replace(axis, grids.Uniform1D(*grid.limits[axis], fps*duration, grid.periodic[axis]))
-            f = self.ndarray(varorder, grid)
+            f = self.ndarray(grid)
         else:
-            f = self.ndarray(varorder, grid)
-        axis = varorder.index(var)
+            f = self.ndarray(grid)
+        axis = self.variables.index(var)
         return animate(str(var), f, duration, save, grid, axis, display, **kwargs)
-
-
-class Node(_Expr):
-
-    def __new__(cls, *args: _Expr):
-        cls._all_compatible(*args)
-        return _Expr.__new__(cls)
-
-    @classmethod
-    def simplify(cls, *args: _Expr)->tuple[_Expr,...]:...
-
-    def init(self, *args, simplify=True):
-        '''
-        The function to call to reinstanciate a Node with different args.
-        For most objects, this is just self.__class__(*args)
-
-        However for a Derivarive object, its args are just (f,) the function it differentiates,
-        but not the variable it differentiates in respect with. So for a Derivative object,
-        we have:
-
-        g = Derivative(f, x, x)
-        g.init(f): return g.__class__(f, *g.diffvars) #g.diffvars different from g.variables
-        '''
-        return self.__class__(*args, simplify=simplify)
+        
+    def _diff(self, var: Symbol)->Expr:
+        raise NotImplementedError('')
     
-    def item(self, path: list[int]):
-        obj = self
-        for i in path:
-            obj = obj.args[i]
-        return obj
-
-
-class Atom(_Expr):
+    def get_ndarray(self, x: Dict[Symbol, np.ndarray], **kwargs)->np.ndarray:
+        raise NotImplementedError('')
     
-    @property
-    def args(self):
-        return ()
-
-    def init(self, *, simplify=True):
-        return self.__class__(*self.Args)
-
     def repr(self, lib = "")->str:
-        return f'{self.Args[0]}'
+        raise NotImplementedError('')
 
     def lowlevel_repr(self, scalar_type="double")->str:
-        return f'{self.Args[0]}'
+        raise NotImplementedError('')
+    
+    @classmethod
+    def simplify(cls, *args: Expr)->tuple[Expr,...]:
+        raise NotImplementedError('')
+        
 
 
-class Operation(Node):
 
-    is_commutative = True
+
+
+
+
+
+    def body(self):
+        '''
+        override
+        '''
+        return self
+    
+    def coef(self):
+        '''
+        override
+        '''
+        return S.One
+    
+    def addargs(self):
+        '''
+        override
+        '''
+        return self,
+
+    def mulargs(self):
+        '''
+        override
+        '''
+        return self,
+
+    def powargs(self)->tuple[Expr, Expr]:
+        '''
+        override
+        '''
+        return self, S.One
+
+    def neg(self)->Expr:
+        '''
+        override
+        '''
+        return -self
+    
+    def expand(self):
+        '''
+        override
+        '''
+        return self
+    
+    def _repr_from(self, arg: str, oper: Type[Operation], lowlevel=False)->str:
+        '''
+        override
+        '''
+        base = self.repr(arg) if not lowlevel else self.lowlevel_repr(arg)
+        if oper.repr_priority <= self.repr_priority:
+            return base
+        else:
+            return f'({base})'
+        
+
+
+
+
+
+
+    
+
+    @property
+    def _hashable_content(self):
+        '''
+        override (e.g. ScalarField overrides this, and creates _HashableNdArray)
+        '''
+        return self._args
+
+    @cached_property
+    def variables(self)->tuple[Symbol, ...]:
+        '''
+        override
+        '''
+        res = ()
+        for arg in self.branches:
+            for x in arg.variables:
+                if x not in res:
+                    res += (x,)
+        return tools.sort(res, [Hashable(x) for x in res])[0]
+        
+    def init(self, *args, simplify=True):
+        '''
+        override
+
+        This property is defined so that obj.init(*obj.args) is equivalent to obj
+        '''
+        if isinstance(self, Atom):
+            return self.__class__(*args)
+        else:
+            return self.__class__(*args, simplify=simplify)
+    
+    def doit(self, deep=True)->Expr:
+        '''
+        override
+        '''
+        if isinstance(self, Atom):
+            return self
+        elif deep:
+            return self._remake_branches(Expr, "doit", deep=True)
+        else:
+            return self.init(*[arg for arg in self._args], simplify=True)#simply reinstanciate simplified
+    
+    def eval(self)->Expr:
+        '''
+        override: _Number, _mathFunc, Operation, Subs
+        '''
+        return self._remake_branches(Expr, "eval")
+        
+    def _subs(self, vals: Dict[Symbol, Expr])->Expr:
+        '''
+        override. e.g. The Derivative or Diff override it, because the variable we differentiate wrt cannot change to another Expr.
+        '''
+        if self in vals:
+            return vals[self]
+        else:
+            return self._remake_branches(Expr, "_subs", vals)
+
+    def matrix(self, grid: grids.Grid, acc=1, fd='central')->sp.csr_matrix:
+        '''
+        override
+        '''
+        return tools.as_sparse_diag(self.array(grid, acc=acc, fd=fd))
+
+
+
+
+    @property
+    def hasdiff_wrt(self)->tuple[Symbol,...]:
+        res = ()
+        items: tuple[Diff, ...] = self.deepsearch(Diff)
+        for item in items:
+                if item.symbol not in res:
+                    res += (item.symbol,)
+        return res
+    
+    def trivially_commutes_with(self, other: Expr)->bool:
+        if not self.is_operator and not other.is_operator:
+            return True
+        
+        if all([d_dxi not in other.symbols for d_dxi in self.hasdiff_wrt]) and all([d_dxi not in self.symbols for d_dxi in other.hasdiff_wrt]):
+            return True
+        
+        if self == other:
+            return True
+        
+        return False
+    
+    def commutes_with(self, other: Expr)->bool:
+        if not self.trivially_commutes_with(other):
+            return (self*other-other*self).Expand().apply(Function('f', *list(set(self.variables+other.variables)))) == 0
+        else:
+            return True
+
+    def Expand(self)->Expr:
+        res: Expr
+        if isinstance(self, Add):
+            res = Add(*[arg.Expand() for arg in self.args])
+        elif isinstance(self, (Mul, Pow)):
+            if any([isinstance(arg, Add) for arg in self.mulargs()]):
+                oper = self.expand()
+                res = oper.Expand()
+            else:
+                args: list[Expr] = list(self.mulargs())
+                if len(args) == 1:
+                    return self
+                res = self
+                for i in range(len(args)-2, -1, -1):
+                    if isinstance(args[i], Diff) and not args[i+1].is_operator:
+                        oper = args[i].apply(args[i+1]) + args[i+1]*args[i]
+                        args.pop(i+1)
+                        args[i] = oper
+                        res = Mul(*args)
+                        res = res.Expand()
+                        break
+        else:
+            res = self
+        return res.expand()
+
+    def apply(self, other)->Expr:
+        other = asexpr(other)
+        if isinstance(self, Diff):
+            return other.diff(self.symbol, self.order)
+        elif isinstance(self, Add):
+            return Add(*[arg.apply(other) for arg in self.args])
+        elif isinstance(self, (Mul, Pow)):
+            args = self.mulargs()
+            if len(args) == 1:
+                return self*other
+            else:
+                return _apply_seq(args, other)
+        else:
+            return self*other
+        
+    def adjoint(self, weight: Symbol = 1):
+        weight = asexpr(weight)
+        if weight.is_operator:
+            raise ValueError('Weight must not contain any differential operators')
+        if isinstance(self, Diff):
+            return (-1)**self.order * weight * self * weight
+        elif isinstance(self, Add):
+            return Add(*[arg.adjoint(weight) for arg in self.args])
+        elif isinstance(self, Mul):
+            n = len(self.args)
+            return Mul(*[self.args[i].adjoint(weight) for i in range(n-1, -1, -1)])
+        elif isinstance(self, Pow):
+            if self.is_operator:
+                return self.base.adjoint(weight) ** self.power
+            else:
+                return self
+        elif isinstance(self, Complex):
+            return Complex(self.value.conjugate())
+        else:
+            return self
+    
+    def separate(self)->tuple[Symbol]:
+        if len(self.variables) == 0:
+            return self,
+        else:
+            x = self.variables[0]
+            res[x] = 0
+        args = self.expand().addargs()
+        res: Dict[Symbol, Expr] = {}
+        for arg in args:
+            if len(arg.variables) > 1:
+                return self,
+            elif len(arg.variables) == 1:
+                v = arg.variables[0]
+                if v not in res:
+                    res[v] = arg
+                else:
+                    res[v] += arg
+            else:
+                res[x] += arg
+            
+        return tuple(res.values())
+
+
+
+    
+
+
+class Atom(Expr):
+    
+    @property
+    def branches(self)->tuple[Expr, ...]:
+        return ()
+    
+    @property
+    def atoms(self)->Atom:
+        return (self,)
+    
+    @classmethod
+    def simplify(cls, *args):
+        return cls(*args)
+
+
+class Operation(Expr):
+
     binary: str
+    _args: tuple[Expr, ...]
 
-    def __new__(cls, *args, simplify=True):
-        args = tuple([cls._asexpr(arg) for arg in args])
+    def __new__(cls, *args: Expr, simplify=True):
         if len(args) == 1:
             return args[0]
         if simplify:
             args = cls.simplify(*args)
             if len(args) == 1:
                 return args[0]
-            else:
-                obj = Node.__new__(cls, *args)
-                obj.Args = args
-        else:
-            obj = Node.__new__(cls, *args)
-            obj.Args = args
-        return obj
-
+        return Expr.__new__(cls, *args)
     
-    def _equals(self, other: Operation):
-        if len(other.args) == len(self.args):
-            if self.is_commutative:
-                for arg in self.args:
-                    if arg not in other.args:
-                        return False
-                return True
-            else:
-                n = len(self.args)
-                for i in range(n):
-                    if self.args[i] != other.args[i]:
-                        return False
-                return True
-        else:
-            return False
-
-    def includes(self, *args):
-        '''
-        If it includes this sequence it will be found.
-        But what if it is included more than once. TODO
-        '''
-        if len(args) > len(self.args):
-            return []
-        
-        n = len(self.args)
-        res = []
-        if self.is_commutative:
-            for arg in args:
-                for i in range(n):
-                    if arg == self.args[i]:
-                        if i not in res:
-                            res.append(i)
-            if len(res) == len(args):
-                return res
-            else:
-                return []
-        else:
-            m = len(args)
-            for i in range(n-m+1):
-                if self.args[i:i+m] == args:
-                    return list(range(i, i+m))
-            return []
-
-    def argsub(self, arg: _Expr, *k: int):
-        '''
-        works for all nodes (including non commutative operations) by default
-
-        Could be implemented in all Node objects, but there are classes that cannot define this method
-        well, like the Subs class.
-        '''
-        if not self.is_commutative:
-            assert all([k[i+1]==k[i]+1 for i in range(len(k)-1)])
-        k: list[int] = sorted(k)
-        seq = list(self.args)
-        seq[k[0]] = arg
-        del k[0]
-        k.reverse()
-        for i in k:
-            seq.pop(i)
-        return self.init(*seq)
+    @property
+    def args(self)->tuple[Expr,...]:
+        return self._args
+    
+    @property
+    def is_commutative(self):
+        return True
     
     @classmethod
-    def matheval(cls, *args: float)->float:...
-
+    def matheval(cls, a, b):
+        raise NotImplementedError('')
+    
     def repr(self, lib = ""):
-        return self.binary.join([f._repr_from(lib, self.__class__) for f in self.args])
+        return self.binary.join([f._repr_from(lib, self.__class__) for f in self._args])
     
     def lowlevel_repr(self, scalar_type="double"):
-        return self.binary.join([f._repr_from(scalar_type, self.__class__, lowlevel=True) for f in self.args])
+        return self.binary.join([f._repr_from(scalar_type, self.__class__, lowlevel=True) for f in self._args])
+    
+    def eval(self):
+        args = [arg.eval() for arg in self.args]
+        if isinstance(self, Pow):
+            a, b = self.base.eval(), self.power.eval()
+            if isinstance(a, Number) and isinstance(b, Number):
+                return asexpr(a.value**b.value)
+            else:
+                return Pow(a, b)
+        else:
+            nums, rest = [], []
+            for arg in args:
+                if isinstance(arg, Number):
+                    nums.append(arg.value)
+                else:
+                    rest.append(arg)
+            return self.init(self.matheval(*nums), *rest)
+        
 
-
-class _Add(Operation):
+class Add(Operation):
 
     repr_priority = 0
-    binary = ' + '
+    binary = '+'
+    _priority = 0
+
+    def __new__(cls, *args, simplify=True):
+        args = tuple([asexpr(arg) for arg in args])
+        args = sort_by_hash(*args)
+        return Operation.__new__(cls, *args, simplify=simplify)
 
     @classmethod
-    def simplify(cls, *seq: _Expr):
-        flatseq: tuple[_Expr,...] = ()
+    def simplify(cls, *seq: Expr):
+        flatseq: tuple[Expr,...] = ()
         
         for arg in seq:
             flatseq += arg.addargs()
         
         _float = 0.
-        rational = cls.S.Zero
+        rational = S.Zero
 
-        coef: Dict[_Expr, list[_Expr]] = {}
+        coef: Dict[Expr, list[Expr]] = {}
 
         for arg in flatseq:
-            if isinstance(arg, _Float):
+            if isinstance(arg, Float):
                 _float += arg.value
-            elif isinstance(arg, _Rational):
-                rational = cls._rat(rational.n*arg.d+arg.n*rational.d, rational.d*arg.d)
+            elif isinstance(arg, Rational):
+                rational = Rational(rational.n*arg.d+arg.n*rational.d, rational.d*arg.d)
             else:
                 base, c = arg.body(), arg.coef()
                 if base in coef:
@@ -602,43 +649,43 @@ class _Add(Operation):
 
         res = []
         if _float != 0:
-            res.append(cls._asexpr(_float))
+            res.append(asexpr(_float))
         if rational.n != 0:
             res.append(rational)
         for base in coef:
-            c = cls._add(*coef[base])
+            c = Add(*coef[base])
             if c != 0:
                 res.append(c*base)
 
         if not res:
-            return cls.S.Zero,
+            return S.Zero,
         else:
             return tuple(res)
-
+        
     @cached_property
     def sgn(self):
-        signs = [arg.sgn for arg in self.args]
+        signs = [arg.sgn for arg in self._args]
         if signs.count(1) >= signs.count(-1):
             return 1
         else:
             return -1
 
     def _diff(self, var):
-        return self._add(*[arg._diff(var) for arg in self.args])
+        return Add(*[arg._diff(var) for arg in self._args])
 
     def neg(self):
-        return self.init(*[-arg for arg in self.args])
+        return self.init(*[-arg for arg in self._args])
 
     def addargs(self):
-        return self.args
+        return self._args
     
     @classmethod
     def matheval(cls, *args: float)->float:
         return sum(args)
     
     def _remove_minus(self, func: str, _arg: str)->str:
-        res = getattr(self.args[0], func)(_arg)
-        for arg in self.args[1:]:
+        res = getattr(self._args[0], func)(_arg)
+        for arg in self._args[1:]:
             r: str = getattr(arg, func)(_arg)
             if r.startswith('-'):
                 res += ' - ' + r[1:]
@@ -652,126 +699,175 @@ class _Add(Operation):
     def lowlevel_repr(self, scalar_type="double"):
         return self._remove_minus("lowlevel_repr", scalar_type)
     
-    def expand(self):
-        return self._add(*[arg.expand() for arg in self.args])
+    def expand(self)->Expr:
+        return Add(*[arg.expand() for arg in self._args])
 
     def get_ndarray(self, x, **kwargs):
-        return np.sum([arg.get_ndarray(x, **kwargs) for arg in self.args], axis=0)
+        return np.sum([arg.get_ndarray(x, **kwargs) for arg in self._args], axis=0)
+    
+    def matrix(self, grid, acc=1, fd='central'):
+        return sum([arg.matrix(grid, acc, fd) for arg in self.args], start=grid.empty_matrix())
+    
 
-
-class _Mul(Operation):
+class Mul(Operation):
 
     repr_priority = 1
     binary = '*'
+    _priority = 1
 
+    def __new__(cls, *args, simplify=True):
+        args = tuple([asexpr(arg) for arg in args])
+        if not any([arg.is_operator for arg in args]):
+            args = sort_by_hash(*args)
+        return Operation.__new__(cls, *args, simplify=simplify)
+    
     @classmethod
-    def simplify(cls, *seq: _Expr):
-
-        flatseq: tuple[_Expr,...] = ()
+    def simplify(cls, *seq: Expr):
+        flatseq: tuple[Expr,...] = ()
         for arg in seq:
             if arg == 0:
-                return cls.S.Zero,
-            elif arg.sgn == -1 and isinstance(arg, _Add):
-                flatseq += (cls._asexpr(-1),) + cls._add(*[-f for f in arg.args], simplify=False).mulargs()
+                return S.Zero,
+            elif arg.sgn == -1 and isinstance(arg, Add):
+                flatseq += (asexpr(-1),) + Add(*[-f for f in arg._args], simplify=False).mulargs()
             else:
                 flatseq += arg.mulargs()
 
         _float = 1.
-        rational = cls.S.One
-
-        pow: Dict[_Expr, list[_Expr]] = {}
-        for arg in flatseq:
-            if isinstance(arg, _Float):
-                _float *= arg.value
-            elif isinstance(arg, _Rational):
-                rational = cls._rat(rational.n*arg.n, rational.d*arg.d)
-            else:
-                base, p = arg.powargs()
-                if base in pow:
-                    pow[base].append(p)
+        rational = S.One
+        if any([arg.is_operator for arg in flatseq]):
+            newseq: list[Expr] = []
+            for arg in flatseq:
+                if isinstance(arg, Float):
+                    _float *= arg.value
+                elif isinstance(arg, Rational):
+                    rational = Rational(rational.n*arg.n, rational.d*arg.d)
                 else:
-                    pow[base] = [p]
-    
-        res = []
-        if isinstance(rational, _Integer) and _float != 1.:
-            res.append(cls._asexpr(rational.n*_float))
-        else:
+                    newseq.append(arg)
+            
+            simp_seq: list[Expr] = []
+            for arg in newseq:
+                simp_seq.append(arg)
+                j = len(simp_seq)-2
+                while arg.trivially_commutes_with(simp_seq[j]) and j >= 0:
+                    base1, p1 = simp_seq[j].powargs()
+                    base2, p2 = arg.powargs()
+                    if base1 == base2:
+                        power = p1 + p2
+                        if power != 0:
+                            simp_seq[j] = base1**power
+                        else:
+                            simp_seq.pop(j)
+                        simp_seq.pop(-1)
+                        break
+                    elif j == 0:
+                        break
+                    else:
+                        j -= 1
+            
+            res = []
             if _float != 1:
-                res.append(cls._asexpr(_float))
+                res.append(asexpr(_float))
             if rational != 1:
                 res.append(rational)
-        for base in pow:
-            c = cls._add(*pow[base])
-            if c == 0:
-                continue
-            res.append(base**c)
+            res = res + simp_seq
+        else:
+            pow: Dict[Expr, list[Expr]] = {}
+            for arg in flatseq:
+                if isinstance(arg, Float):
+                    _float *= arg.value
+                elif isinstance(arg, Rational):
+                    rational = Rational(rational.n*arg.n, rational.d*arg.d)
+                else:
+                    base, p = arg.powargs()
+                    if base in pow:
+                        pow[base].append(p)
+                    else:
+                        pow[base] = [p]
+        
+            res = []
+            if isinstance(rational, Integer) and _float != 1.:
+                res.append(asexpr(rational.n*_float))
+            else:
+                if _float != 1:
+                    res.append(asexpr(_float))
+                if rational != 1:
+                    res.append(rational)
+            for base in pow:
+                c = Add(*pow[base])
+                if c == 0:
+                    continue
+                res.append(base**c)
 
         if not res:
-            return cls.S.One,
+            return S.One,
         else:
             return tuple(res)
-
+        
+    @property
+    def is_commutative(self):
+        return not self.is_operator
+        
     @cached_property
     def numerator(self):
         res = []
-        for arg in self.args:
-            if isinstance(arg, _Pow):
-                if isinstance(arg.power, (_Float, _Integer)):
+        for arg in self._args:
+            if isinstance(arg, Pow):
+                if isinstance(arg.power, (Float, Integer)):
                     if arg.power.value < 0:
                         continue
             res.append(arg)
         if not res:
-            return self.S.One
+            return S.One
         else:
-            return self._mul(*res, simplify=False)
+            return Mul(*res, simplify=False)
 
     @cached_property
     def denominator(self):
         res = []
-        for arg in self.args:
-            if isinstance(arg, _Pow):
-                if isinstance(arg.power, (_Float, _Integer)):
+        for arg in self._args:
+            if isinstance(arg, Pow):
+                if isinstance(arg.power, (Float, Integer)):
                     if arg.power.value < 0:
                         res.append(arg**-1)
         if not res:
-            return self.S.One
+            return S.One
         else:
-            return self._mul(*res, simplify=False)
+            return Mul(*res, simplify=False)
 
     @cached_property
     def _coef(self):
         res = []
-        for arg in self.args:
-            if isinstance(arg, _Number) and not isinstance(arg, _Special):
+        for arg in self._args:
+            if isinstance(arg, Number) and not isinstance(arg, Special):
                 res.append(arg)
-        if len(res) == len(self.args):
-            return self.S.One
+        if len(res) == len(self._args):
+            return S.One
         else:
-            return self._mul(*res)
+            return Mul(*res)
 
     @cached_property
     def _body(self):
         res = []
-        for arg in self.args:
-            if not isinstance(arg, _Number) or isinstance(arg, _Special):
+        for arg in self._args:
+            if not isinstance(arg, Number) or isinstance(arg, Special):
                 res.append(arg)
         if not res:
             return self
         else:
-            return self._mul(*res)
+            return Mul(*res)
 
     @cached_property
     def sgn(self):
-        return self.args[0].sgn
+        return self._args[0].sgn
     
     def _diff(self, var):
-        coef = self._mul(*[arg for arg in self.args if arg.isNumber])
-        body = [arg for arg in self.args if not arg.isNumber]
+        coef = Mul(*[arg for arg in self._args if arg.isNumber])
+        body = [arg for arg in self._args if not arg.isNumber]
         toadd = []
         for i in range(len(body)):
             prod = body[:i]+[body[i]._diff(var)]+body[i+1:]
-            toadd.append(self._mul(*prod))
-        return coef*self._add(*toadd)
+            toadd.append(Mul(*prod))
+        return coef*Add(*toadd)
 
     def body(self):
         return self._body
@@ -788,9 +884,9 @@ class _Mul(Operation):
         num, den = self.numerator, self.denominator
         if den != 1:
             if den.repr_priority == self.repr_priority:
-                s = f'{num._repr_from(arg, _Mul, lowlevel)}/({den._repr_from(arg, _Mul, lowlevel)})'
+                s = f'{num._repr_from(arg, Mul, lowlevel)}/({den._repr_from(arg, Mul, lowlevel)})'
             else:
-                s = f'{num._repr_from(arg, _Mul, lowlevel)}/{den._repr_from(arg, _Mul, lowlevel)}'
+                s = f'{num._repr_from(arg, Mul, lowlevel)}/{den._repr_from(arg, Mul, lowlevel)}'
         else:
             s = getattr(Operation, func)(self, arg)
         if s.startswith('-1*'):
@@ -806,47 +902,56 @@ class _Mul(Operation):
         return self._remove_one("lowlevel_repr", scalar_type)
 
     def mulargs(self):
-        return sum([arg.mulargs() for arg in self.args], start=())
+        return sum([arg.mulargs() for arg in self._args], start=())
 
-    def expand(self):
-        if not self.contains_type(_Add):
+    def expand(self)->Expr:
+        if not self.contains_type(Add):
             return self
-        args = [arg.expand() for arg in self.args]
-        muls = itertools.product(*[arg.args if isinstance(arg, _Add) else (arg,) for arg in args])
-        s = [self._mul(*m) for m in muls]
-        return self._add(*s)
+        args = [arg.expand() for arg in self._args]
+        muls = itertools.product(*[arg._args if isinstance(arg, Add) else (arg,) for arg in args])
+        s = [Mul(*m) for m in muls]
+        return Add(*s)
 
     def get_ndarray(self, x, **kwargs):
-        return np.prod([arg.get_ndarray(x, **kwargs) for arg in self.args], axis=0)
+        return np.prod([arg.get_ndarray(x, **kwargs) for arg in self._args], axis=0)
+    
+    def matrix(self, grid, acc=1, fd='central'):
+        return tools.multi_dot_product(*[f.matrix(grid, acc, fd) for f in self.args])
 
 
-class _Pow(Operation):
+class Pow(Operation):
 
-    is_commutative = False
     repr_priority = 2
     binary = '**'
+    _priority = 2
 
     def __new__(cls, base, power, simplify=True):
-        return super().__new__(cls, base, power, simplify=simplify)
+        base = asexpr(base)
+        power = asexpr(power)
+        if power.is_operator:
+            raise ValueError('Cannot raise an expression to an exponent that is a differential operator')
+        elif base.is_operator and power.isNegInt:
+            raise ValueError('Cannot raise a differential operator to a power that is not a positive integer')
+        return Operation.__new__(cls, base, power, simplify=simplify)
     
     @classmethod
-    def simplify(cls, a: _Expr, b: _Expr):
+    def simplify(cls, a: Expr, b: Expr):
         abase, apower = a.powargs()
         a, b = abase, apower*b
         if a == 1 or b == 0:
-            return cls.S.One,
+            return S.One,
         elif b == 1:
             return a,
         elif a == 0:
-            if isinstance(b, (_Float, _Integer)):
+            if isinstance(b, (Float, Integer)):
                 if b.value < 0:
                     raise ValueError('Cannot divide by zero')
-            return cls.S.Zero,
-        elif isinstance(a, _Rational) and isinstance(b, _Integer):
+            return S.Zero,
+        elif isinstance(a, Rational) and isinstance(b, Integer):
             if b > 0:
-                return cls._rat(a.n**b.value, a.d**b.value),
+                return Rational(a.n**b.value, a.d**b.value),
             else:
-                return cls._rat(a.d**-b.value, a.n**-b.value),
+                return Rational(a.d**-b.value, a.n**-b.value),
         elif hasattr(a, 'raiseto'):
             return getattr(a, 'raiseto')(b),
         else:
@@ -854,7 +959,7 @@ class _Pow(Operation):
     
     def repr(self, lib = ""):
         if self.base.repr_priority == self.repr_priority:
-            return f'({self.base._repr_from(lib, _Pow)})**{self.power._repr_from(lib, _Pow)}'
+            return f'({self.base._repr_from(lib, Pow)})**{self.power._repr_from(lib, Pow)}'
         else:
             return super().repr(lib)
 
@@ -862,22 +967,31 @@ class _Pow(Operation):
         return f"pow({self.base.lowlevel_repr(scalar_type)}, {self.power.lowlevel_repr(scalar_type)})"
     
     @property
+    def is_commutative(self):
+        return False
+
+    @property
     def base(self):
-        return self.args[0]
+        return self._args[0]
     
     @property
     def power(self):
-        return self.args[1]
+        return self._args[1]
 
     def _diff(self, var):
-        if var not in self.power.variables:
-            return self._mul(self.power, self.base**(self.power-1), self.base._diff(var))
+        if self.is_operator:
+            return Diff(var)*self
+        elif var not in self.power.variables:
+            return Mul(self.power, self.base**(self.power-1), self.base._diff(var))
         elif var not in self.base.variables:
-            return self * self._log(self.base) * self.power._diff(var)
+            return self * log(self.base) * self.power._diff(var)
         else:
-            return self * (self._log(self.base) * self.power._diff(var) + self.power/self.base*self.base._diff(var))
+            return self * (log(self.base) * self.power._diff(var) + self.power/self.base*self.base._diff(var))
 
     def mulargs(self):
+        if self.is_operator:
+            return self.power.value * self.base.mulargs()
+
         res = self.base.mulargs()
         if len(res) == 1:
             return self,
@@ -885,105 +999,122 @@ class _Pow(Operation):
             return tuple([arg**self.power for arg in res])
         
     def powargs(self):
-        return self.args
+        return self._args
 
     @classmethod
     def matheval(cls, a, b):
         return a**b
         
-    def expand(self):
-        if isinstance(self.power, _Integer):
+    def expand(self)->Expr:
+        if isinstance(self.power, Integer):
             if self.power.value > 0:
                 args = self.power.value*[self.base.expand()]
-                muls = itertools.product(*[arg.args if isinstance(arg, _Add) else (arg,) for arg in args])
-                return self._add(*[self._mul(*m) for m in muls])
+                muls = itertools.product(*[arg._args if isinstance(arg, Add) else (arg,) for arg in args])
+                return Add(*[Mul(*m) for m in muls])
         return self
     
     def get_ndarray(self, x, **kwargs):
-        return np.power(*[arg.get_ndarray(x, **kwargs) for arg in self.args])
+        return np.power(*[arg.get_ndarray(x, **kwargs) for arg in self._args])
+    
+    def matrix(self, grid, acc=1, fd='central'):
+        if self.is_operator:
+            return tools.multi_dot_product(*(self.power.value*[self.base.matrix(grid, acc, fd)]))
+        else:
+            return tools.as_sparse_diag(self.array(grid, acc, fd))
 
 
-class _Function(Atom):
+class Function(Expr):
 
-    def __new__(cls, *x: _Symbol):
-        cls._all_compatible(*x)
-        return Atom.__new__(cls)
+    def __new__(cls, name: str, *x: Symbol):
+        assert tools.all_different(x)
+        assert all([isinstance(xi, Symbol) for xi in x])
+        return Expr.__new__(cls, name, *x)
 
-    is_analytical_expression = False
-    #define self.Args, probably in subclasses
-
+    
     @property
-    def name(self)->str:...
-
+    def name(self)->str:
+        return self._args[0]
+    
     @property
-    def _variables(self)->tuple[_Symbol,...]:...
+    def nd(self):
+        return (len(self._args)-1) // 2
 
     def repr(self, lib=""):
         if lib != '':
-            raise NotImplementedError('_Function objects do not support representation with an external library')
+            raise NotImplementedError('Function objects do not support representation with an external library')
         else:
-            return f'{self.name}({", ".join([str(x) for x in self._variables])})'
+            return f'{self.name}({", ".join([str(x) for x in self.symbols])})'
+        
+    def _diff(self, var):
+        return Derivative(self, var) if var in self.symbols else S.Zero
+        
 
-    def lowlevel_repr(self, scalar_type="double"):
-        raise NotImplementedError()
-
-    def get_ndarray(self, x, **kwargs):
-        raise NotImplementedError('')
-
-
-class _Number(Atom):
-
-    def __gt__(self, other)->bool:
-        other = self._asexpr(other)
-        if isinstance(other, _Number):
-            return self.value > other.value
-        else:
-            raise NotImplementedError('Comparison only valid between real numbers')
-
-    def __lt__(self, other)->bool:
-        other = self._asexpr(other)
-        if isinstance(other, _Number):
-            return self.value < other.value
-        else:
-            raise NotImplementedError('Comparison only valid between real numbers')
+class Number(Atom):
 
     @property
-    def value(self)->int|float|complex:...
-
+    def value(self)->int|float|complex:
+        raise NotImplementedError('')
+    
     @cached_property
     def sgn(self):
-        if not isinstance(self, _Complex):
+        if not isinstance(self, Complex):
             if self.value < 0:
                 return -1
-            else:
-                return 1
-        else:
-            return 1
+        return 1
 
     def get_ndarray(self, x, **kwargs):
         shape = sum([x[v].shape for v in x], start=())
         return self.value * np.ones(shape=shape)
     
     def _diff(self, var):
-        return self.S.Zero
+        return S.Zero
+    
+    def get_ndarray(self, x, **kwargs):
+        shape = sum([x[v].shape for v in x], start=())
+        return self.value * np.ones(shape=shape)
+    
+    def eval(self):
+        return asexpr(self.value)
+    
+    def matrix(self, grid, acc=1, fd='central'):
+        return self.value * sp.identity(grid.n, format='csr')
 
+    
 
-class _Float(_Number):
+class Float(Number):
 
-    def __init__(self, value: float):
-        assert value != 0 and isinstance(value, float)
-        self.Args = (value,)
-        if value < 0:
-            self.repr_priority = 1
+    _priority = 6
+
+    def __new__(cls, value):
+        assert isinstance(value, (int, float))
+        if int(value) == value:
+            value = int(value)
+            return Integer(value)
+        else:
+            return Expr.__new__(cls, value)
 
     @property
-    def value(self)->int|float:
-        return self.Args[0]
-
-
-class _Rational(_Number):
+    def value(self)->float:
+        return self._args[0]
+    
+    @property
+    def repr_priority(self):
+        if self.value < 0:
+            return 1
+        else:
+            return self.__class__.repr_priority
+    
+    def repr(self, lib=""):
+        return str(self.value)
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return str(self.value)
+    
+    
+class Rational(Number):
 
     repr_priority = 1
+    _priority = 5
 
     def __new__(cls, m: int, n: int):
         assert n!= 0 and isinstance(m, int) and isinstance(n, int)
@@ -991,29 +1122,31 @@ class _Rational(_Number):
         m, n = sgn*abs(m), abs(n)
         gcd = math.gcd(m, n)
         m, n = m//gcd, n//gcd
-        if n == 1 and not issubclass(cls, _Integer):
-            return cls._asexpr(m)
+        if n == 1 and not issubclass(cls, Integer):
+            return asexpr(m)
+        elif issubclass(cls, Integer):
+            return Expr.__new__(cls, m)
         else:
-            obj = _Number.__new__(cls)
-            if issubclass(cls, _Integer):
-                obj.Args = (m,)
-            else:
-                obj.Args = (m, n)
-            if m < 0:
-                obj.repr_priority = 1 #in case cls is _Integer
-            return obj
+            return Expr.__new__(cls, m, n)
     
     @property
     def n(self)->int:
-        return self.Args[0]
+        return self._args[0]
     
     @property
     def d(self)->int:
-        return self.Args[1]
+        return self._args[1]
 
     @property
     def value(self)->int|float:
-        return self.Args[0]/self.Args[1]
+        return self._args[0]/self._args[1]
+    
+    @property
+    def repr_priority(self):
+        if self.value < 0:
+            return 1
+        else:
+            return self.__class__.repr_priority
     
     def repr(self, lib=""):
         return f'{self.n}/{self.d}'
@@ -1026,18 +1159,19 @@ class _Rational(_Number):
             return f'{T}({self.n})/{T}({self.d})'
     
     def mulargs(self):
-        if isinstance(self, _Integer):
+        if isinstance(self, Integer):
             return self,
         else:
-            return self._asexpr(self.n), self._rat(1, self.d)
+            return asexpr(self.n), Rational(1, self.d)
+        
 
-
-class _Integer(_Rational):
+class Integer(Rational):
 
     repr_priority = 3
+    _priority = 4
 
     def __new__(cls, m):
-        return _Rational.__new__(cls, m, 1)
+        return Rational.__new__(cls, m, 1)
 
     def repr(self, lib=""):
         return f'{self.value}'
@@ -1051,26 +1185,28 @@ class _Integer(_Rational):
 
     @property
     def value(self)->int:
-        return self.Args[0]
+        return self._args[0]
 
     @property
     def d(self)->int:
         return 1
+    
 
+class Special(Number):
 
-class _Special(_Number):
+    _priority = 3
 
-    def __init__(self, name: str, value: float):
+    def __new__(cls, name: str, value: float):
         assert value > 0 and isinstance(value, float)
-        self.Args = (name, value)
-
+        return Expr.__new__(cls, name, value)
+    
     @property
     def name(self)->str:
-        return self.Args[0]
+        return self._args[0]
 
     @property
     def value(self)->float:
-        return self.Args[1]
+        return self._args[1]
 
     def repr(self, lib=""):
         if lib == '':
@@ -1080,27 +1216,28 @@ class _Special(_Number):
         
     def lowlevel_repr(self, scalar_type="double"):
         return self.name
+    
 
-
-class _Complex(_Number):
+class Complex(Number):
 
     repr_priority = 3
+    _priority = 7
 
-    def __init__(self, real: int|float, imag: int|float):
+    def __new__(cls, real: float, imag: float):
         assert isinstance(real, (int, float)) and isinstance(imag, (int, float))
         if int(real) == real:
             real = int(real)
         if int(imag) == imag:
             imag = int(imag)
-        self.Args = (real, imag)
+        return Expr.__new__(cls, real, imag)
 
     @property
     def real(self)->int|float:
-        return self.Args[0]
+        return self._args[0]
     
     @property
     def imag(self)->int|float:
-        return self.Args[1]
+        return self._args[1]
     
     @property
     def value(self)->complex:
@@ -1113,86 +1250,138 @@ class _Complex(_Number):
             return f'({self.real}+{self.imag}j)'
             
     def lowlevel_repr(self, scalar_type="double"):
-        return f"complex<{scalar_type}>({self.real}, {self.imag})"
+        return f"complex<{scalar_type}>({Float(self.real).lowlevel_repr(scalar_type)}, {Float(self.imag).lowlevel_repr(scalar_type)})"
+    
 
+class Symbol(Atom):
 
-class _Symbol(Atom):
+    _priority = 8
 
-    '''
-    Real-valued variable. Base for all symbols-variables
-    '''
-
-    def __init__(self, name: str):
-        self.Args = (name,)
+    def __new__(cls, name: str, axis=0, simplify=True):
+        return Expr.__new__(cls, axis, name)
 
     @property
     def name(self)->str:
-        return self.Args[0]
+        return self._args[1]
 
+    @property
+    def axis(self)->int:
+        return self._args[0]
+    
     def _diff(self, var):
         if self == var:
-            return self.S.One
+            return S.One
         else:
-            return self.S.Zero
+            return S.Zero
 
     def get_ndarray(self, x, **kwargs):
+        #assumes self in x, which is necessary to call get_ndarray
         return np.meshgrid(*[x[v] for v in x], indexing ='ij')[list(x.keys()).index(self)]
     
+    @property
+    def variables(self):
+        return self,
 
-class _Subs(Node):
+    @property
+    def symbols(self):
+        return self,
 
-    is_analytical_expression = False
+    def to_dummy(self):
+        return Dummy(self.name)
+    
+    def repr(self, lib=""):
+        return self.name
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return self.name
     
 
-    def __new__(cls, expr: _Expr, vals: Dict[_Symbol, _Expr], simplify=True):
+class Dummy(Symbol):
+
+    _priority = 9
+
+    def __new__(cls, name: str):
+        obj = Expr.__new__(cls, -1, name)
+        obj._args += (uuid.uuid4().hex,)
+        return obj
+    
+    @property
+    def axis(self):
+        raise NotImplementedError('')
+
+    def init(self, *args, simplify=True):
+        return Dummy(args[0])
+
+
+class Subs(Expr):
+
+    _priority = 10
+
+    def __new__(cls, expr: Expr, vals: Dict[Symbol, Expr], simplify=True):
         if not vals:
             return expr
-        elif isinstance(expr, _Subs):
-            # same dict keys do not replace older ones, but they are just dismissed
-            oldvals = expr.vals.copy()
+        elif isinstance(expr, Subs):
+            old_vals = expr.subs_data.copy()
+            repeated_vals = {}
             for x in vals:
-                if x not in oldvals:
-                    oldvals[x] = vals[x]
-            return cls._subs(expr.expr, oldvals)
+                if x not in old_vals:
+                    old_vals[x] = vals[x]
+                else:
+                    repeated_vals[x] = vals[x]
+            
+            obj = Subs(expr.expr, old_vals)
+            if not repeated_vals:
+                return obj
+            else:
+                return Subs(obj, repeated_vals)
         else:
-            vals = {x: cls._asexpr(vals[x]) for x in vals}
-            newvals = {}
+            newvals: dict[Symbol, Expr] = {}
             for x in vals:
-                if not isinstance(x, _Symbol) or not vals[x].isNumber:
-                    raise ValueError('Keys must be _Symbol objects and values must be numbers')
+                if not isinstance(x, Symbol):
+                    raise ValueError('Keys must be Symbol objects and values must be numbers')
                 if x in expr.variables:
                     newvals[x] = vals[x]
 
             if not newvals:
                 return expr
 
-            obj = Node.__new__(cls, expr, *tuple(vals.values()))
-            obj.Args = (expr, vals)
-            return obj
-
+            dummies = [x.to_dummy() for x in newvals]
+            symbols = list(newvals.keys())
+            vals = list(newvals.values())
+            expr = expr.varsub({x: v for x, v in zip(symbols, dummies)})
+            return Expr.__new__(cls, expr, *dummies, *vals)
+        
     @property
-    def expr(self)->_Expr:
-        return self.Args[0]
-
-    @property
-    def vals(self)->Dict[_Symbol, _Expr]:
-        return self.Args[1]
+    def expr(self)->Expr:
+        return self._args[0]
     
     @property
-    def args(self):
-        return self.expr,
-
-    def init(self, expr, simplify=True):
-        return self._subs(expr, self.vals.copy(), simplify=simplify)
+    def Nsubs(self):
+        return (len(self._args)-1)//2
+    
+    @property
+    def subs_data(self)->Dict[Symbol, Expr]:
+        return {self._args[1+i]: self._args[1+i+self.Nsubs] for i in range(self.Nsubs)}
+    
+    @cached_property
+    def variables(self):
+        all_vars = super().variables
+        res = []
+        for x in all_vars:
+            if x not in self.subs_data:
+                res.append(x)
+        return tuple(res)
+    
+    def init(self, *args, simplify=True):
+        n = (len(args)-1)//2
+        subs_data = {args[1+i]: args[1+i+n] for i in range(n)}
+        return self.init(args[0], *subs_data, simplify=simplify)
 
     def repr(self, lib=""):
         if lib != '':
             raise NotImplementedError()
         else:
-            return f'Subs({self.expr}, {self.vals})'
-        
-    def lowlevel_repr(self, scalar_type="double"):
-        raise NotImplementedError()
+            return f'Subs({self.expr}, {self.subs_data})'
         
     def doit(self, deep=True):
         if deep:
@@ -1200,25 +1389,17 @@ class _Subs(Node):
         else:
             expr = self.expr
 
-        vals = {x: self.vals[x] for x in self.vals if x in expr.variables}
-        
-        if expr in vals:
-            return vals[expr]
-        elif not expr.is_analytical_expression:
-            return self
-        elif isinstance(expr, Node):
-            return expr.makenew('subs', vals)
-        else:
-            return expr
+        vals = {x: self.subs_data[x] for x in self.subs_data if x in expr.variables}
+        return expr._subs(vals)
 
     def get_ndarray(self, x, **kwargs):
         y = {}
-        s = self.expr.nd*[slice(None)]
+        s = len(self.expr.variables)*[slice(None)]
         gs = []
         vars = []
         for i, v in enumerate(self.expr.variables):
-            if v in self.vals:
-                y[v] = np.array([self.vals[v].eval().value])
+            if v in self.subs_data:
+                y[v] = np.array([self.subs_data[v].eval().value])
                 s[i] = 0
             else:
                 y[v] = x[v]
@@ -1228,93 +1409,58 @@ class _Subs(Node):
         arr = self.expr.get_ndarray(y, **kwargs)
         arr = arr[tuple(s)]
         if arr.ndim > 0:
-            return self._dummy(arr, g, *vars).get_ndarray(x)
+            return DummyScalarField(arr, g, *vars).get_ndarray(x)
         else:
             return arr
+        
+    def eval(self):
+        if self.isNumber:
+            return asexpr(float(self.get_ndarray({})))
+        else:
+            return Expr.eval(self)
 
 
-class _Derivative(Node):
+class Derivative(Expr):
 
-    is_analytical_expression = False
+    _priority = 11
 
-    def __new__(cls, f: _Expr, *vars: _Symbol, simplify=True):
+    def __new__(cls, f: Expr, *vars: Symbol, simplify=True):
         if not vars:
             return f
         elif all([f.is_const_wrt(var) for var in vars]):
-            return cls.S.Zero
-        elif isinstance(f, _Integral):
-            if f.symbol in vars:
-                v = list(vars)
-                v.pop(v.index(f.symbol))
-                return cls(f.f, *v)
-            else:
-                arg = cls._derivative(f.f, *vars)
-                if isinstance(arg, _Derivative):
-                    return f.init(arg.doit())
-                else:
-                    return f.init(arg)
+            return S.Zero
+        elif isinstance(f, Derivative):
+            return Derivative(f.f, *vars, *f.diff_symbols)
 
-        obj = Node.__new__(cls, f, *vars)
-        if isinstance(f, _Derivative):
-            diffs = f.diffcount.copy()
-            f = f.f
-        else:
-            diffs = {}
-        
-        for x in vars:
-            diffs[x] = diffs.get(x, 0) + 1
-        
-        obj.Args = (f, *sum([diffs[xi]*(xi,) for xi in diffs], start=()))
-        return obj
+        return Expr.__new__(cls, f, *vars)
     
     @property
-    def args(self)->tuple[_Expr]:
-        return self.Args[0],
+    def f(self)->Expr:
+        return self.args[0]
     
     @property
-    def f(self)->_Expr:
-        return self.Args[0]
+    def diff_symbols(self)->tuple[Symbol, ...]:
+        return self.args[1:]
     
     @cached_property
-    def symbols(self)->tuple[_Symbol, ...]:
-        return tuple(self.diffcount.keys())
-
-    @cached_property
-    def diffcount(self)->Dict[_Symbol, int]:
+    def diffcount(self)->dict[Symbol, int]:
         res = {}
-        for x in self.Args[1:]:
+        for x in self.diff_symbols:
             res[x] = res.get(x, 0) + 1
         return res
-
+        
     @property
-    def sng(self):
+    def sgn(self):
         return self.f.sgn
     
     def neg(self):
-        return self.init(-self.f)
-
-    @classmethod
-    def newvars(cls, diffcount: Dict[_Symbol, int])->tuple[_Symbol, ...]:
-        res = []
-        for x in diffcount:
-            res += diffcount[x]*[x]
-        return tuple(res)
-    
-    def init(self, f: _Expr, simplify=True):
-        return self.__class__(f, *self.newvars(self.diffcount), simplify=simplify)
-    
-    def _equals(self, other: _Derivative):
-        return self.f == other.f and self.diffcount == other.diffcount
+        return self.init(-self.f, *self.diff_symbols)
     
     def repr(self, lib=""):
         if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated derivatives')
         else:
-            v = [str(x) for x in self.newvars(self.diffcount)]
-            return f"{self.__class__.__name__}({self.f}, {', '.join(v)})"
-        
-    def lowlevel_repr(self, scalar_type="double"):
-        raise NotImplementedError
+            return f"Derivative({", ".join(self.args)})"
 
     def get_ndarray(self, x, **kwargs):
         acc = kwargs.get('acc', 1)
@@ -1322,7 +1468,7 @@ class _Derivative(Node):
         y = x.copy()
         # s = self.nd*[slice(None)]
 
-        diffgrids: Dict[_Symbol, grids.Grid1D] = {}
+        diffgrids: Dict[Symbol, grids.Grid1D] = {}
         variables = list(x.keys())
 
         for i, v in enumerate(variables): #x must contain exactly the elements in self.variables
@@ -1342,10 +1488,10 @@ class _Derivative(Node):
             if self.diffcount[v] > 0:
                 arr = diffgrids[v].findiff.apply(arr, order=self.diffcount[v], acc=acc, fd=fd, axis=variables.index(v))
         return tools.interpolate(tuple(y.values()), arr, tuple(x.values()))
-
-    def expand(self):
+    
+    def expand(self)->Expr:
         f = self.f.expand()
-        return self._add(*[self.init(arg) for arg in f.addargs()])
+        return Add(*[self.init(arg, *self.diff_symbols) for arg in f.addargs()])
     
     def doit(self, deep=True):
         if deep:
@@ -1357,81 +1503,136 @@ class _Derivative(Node):
             if self.diffcount[x] == 0:
                 continue
             elif res.is_const_wrt(x):
-                return self.S.Zero
+                return S.Zero
             else:
                 for _ in range(self.diffcount[x]):
                     res = res._diff(x)
         return res
-
-
-class _Integral(Node):
-
-    '''
-    This class needs more work. Since integration algorithms are not to be implemented,
-    numerical substitution will fail in most cases, usually raising the error
-    'Integration only implemented when the given array starts from self.x0'
-    as defined in .get_ndarray().
-
-    Not good to work with, besides some specific cases.
-    '''
     
-    is_analytical_expression = False
+    def _subs(self, vals):
+        return Subs(self, vals)
 
-    def __new__(cls, f: _Expr, var: _Symbol, x0, simplify=True):
 
+class Diff(Expr):
+
+    _priority = 16
+
+
+    def __new__(cls, var: Symbol, order=1, simplify=True):
+        if isinstance(order, Integer):
+            order = order.value
+        if not isinstance(var, Symbol):
+            raise ValueError(f'var must be of an instance of Symbol, not of type {type(var)}')
+        elif not isinstance(order, int) or order < 0:
+            raise ValueError(f'The Diff order can only be integer and positive')
+        if order == 0:
+            return S.One
+        else:
+            return Expr.__new__(cls, var, order)
+        
+    @property
+    def variables(self):
+        return ()
+
+    @property
+    def symbol(self)->Symbol:
+        return self._args[0]
+    
+    @property
+    def order(self)->int:
+        return self._args[1]
+    
+    def mulargs(self):
+        return self.order*(Diff(self.symbol),)
+        
+    def _diff(self, var):
+        return Diff(var)*self
+
+    def repr(self, lib: str):
+        if lib != '':
+            raise NotImplementedError('Differential operators do not support repr()')
+        else:
+            if self.order == 1:
+                return f'Diff({self.symbol})'
+            else:
+                return f'Diff({self.symbol}, {self.order})'
+        
+    def powargs(self):
+        return Diff(self.symbol), self.order
+
+    def raiseto(self, power):
+        return Diff(self.symbol, self.order*power)
+    
+    def matrix(self, grid, acc=1, fd='central'):
+        return grid.partialdiff_matrix(order=self.order, axis=self.symbol.axis, acc=acc, fd=fd)
+    
+    def _subs(self, vals):
+        if self.symbol in vals:
+            raise ValueError('')
+        return self
+
+
+class Integral(Expr):
+
+    _priority = 12
+
+    def __new__(cls, f: Expr, var: Symbol, a: Expr, b: Expr, simplify=True):
+        f, a, b = asexpr(f), asexpr(a), asexpr(b)
         if var not in f.variables:
             return var * f
-        elif isinstance(f, _Derivative):
+        elif isinstance(f, Derivative):
             if var in f.symbols:
                 diffs = f.diffcount.copy()
                 diffs[var] -= 1
-                return _Derivative(f.f, *f.newvars(diffs))
-
-        obj = Node.__new__(cls, f, var)
-        obj.Args = (f, var, x0)
-        return obj
-
-    @property
-    def args(self):
-        return self.f,
+                args = sum([diffs[var]*[var] for var in diffs], start=[])
+                return Subs(Derivative(f.f, *args), {var: b}) - Subs(Derivative(f.f, *args), {var: a})
+            
+        s = var.to_dummy()
+        f = f._subs({var: s})
+        return Expr.__new__(cls, f, s, a, b)
 
     @property
-    def f(self)->_Expr:
-        return self.Args[0]
+    def f(self)->Expr:
+        return self.args[0]
     
     @property
-    def symbol(self)->_Symbol:
-        return self.Args[1]
+    def symbol(self)->Symbol:
+        return self.args[1]
     
     @property
-    def x0(self)->float:#the point where the integral starts. This is where the ndarray sets its zero.
-        return self.Args[2]
-
-    def init(self, arg, simplify=True):
-        return self.__class__(arg, self.symbol, x0=self.x0)
+    def limits(self)->tuple[Expr, Expr]:
+        return self.args[2:]
 
     @property
-    def sng(self):
+    def sgn(self):
         return self.f.sgn
     
+    @cached_property
+    def variables(self)->tuple[Symbol,...]:
+        res = []
+        for x in Expr.variables.__get__(self):
+            if x != self.symbol:
+                res.append(x)
+        return tuple(res)
+
+
     def neg(self):
-        return self.init(-self.f)
+        return self.init(-self.f, self.symbol, *self.limits)
     
     def repr(self, lib=""):
         if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated integrals')
         else:
-            return f'{self.__class__.__name__}({self.f}, {self.symbol}, {self.x0})'
+            return f'Integral({", ".join(self.args)})'
         
     def lowlevel_repr(self, scalar_type="double"):
-        raise NotImplementedError()
+        raise NotImplementedError('')
 
     def get_ndarray(self, x, **kwargs):
+        raise NotImplementedError('Not yet implemented, soon to be')
         r = x[self.symbol]
-        if r[0] != self.x0:
-            raise NotImplementedError('Integration only implemented when the given array starts from self.x0')
         if len(r) == 1:
-            return self.S.Zero.get_ndarray(x)
+            return S.Zero.get_ndarray(x)
         gs = self.get_grids(self.symbol)
         if len(gs) == 1:
             gx = gs[0].x[0]
@@ -1446,25 +1647,27 @@ class _Integral(Node):
         #in the future, if r[0] != self.x0 is implemented, then after the cumulative_simpson is performed,
         #we need to properly index the array to keep only the values for the given array
         return tools.interpolate(tuple(y.values()), arr, tuple(x.values()))
+    
+    def _diff(self, var):
+        if var not in self.f.variables:
+            return Subs(self.f, {self.symbol: self.limits[0]})*self.limits[0]._diff(var) - Subs(self.f, {self.symbol: self.limits[1]})*self.limits[1]._diff(var)
+        else:
+            return Derivative(self, var)
+        
 
-    def expand(self):
-        f = self.f.expand()
-        return self._add(*[self.init(arg) for arg in f.addargs()])
 
+class ScalarField(Function):
 
-class _ScalarField(_Function):
+    _priority = 13
 
-    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: _Symbol):
-        return _Function.__new__(cls, *vars)
-
-    def __init__(self, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: _Symbol):
+    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: Symbol):
         if ndarray.shape != grid.shape:
             raise ValueError(f'Grid shape is {grid.shape} while field shape is {ndarray.shape}')
         if len(vars) != grid.nd:
             raise ValueError(f'Grid shape is {grid.shape} while the given variables are {len(vars)} in total')
-        assert tools.all_different(vars)
-
-        self.Args = (ndarray.copy(), grid, name, *vars)
+        obj = Function.__new__(cls, name, *vars)
+        obj._args = (ndarray, grid) + obj._args
+        return obj
 
     def __call__(self, *args):
         if hasattr(args[0], '__iter__'):
@@ -1475,19 +1678,19 @@ class _ScalarField(_Function):
         
     @property
     def _ndarray(self)->np.ndarray:
-        return self.Args[0]
+        return self.args[0]
     
     @property
     def grid(self)->grids.Grid:
-        return self.Args[1]
+        return self.args[1]
 
     @property
     def name(self)->str:
-        return self.Args[2]
+        return self.args[2]
 
     @property
-    def _variables(self)->tuple[_Symbol,...]:
-        return self.Args[3:]
+    def variables(self)->tuple[Symbol,...]:
+        return self.args[3:]
     
     @property
     def ndim(self)->int:
@@ -1497,22 +1700,20 @@ class _ScalarField(_Function):
     def interpolator(self):
         return RegularGridInterpolator(self.grid.x, self._ndarray, method="cubic")
     
+    @property
+    def _hashable_content(self):
+        return (_HashableNdArray(self._ndarray), _HashableGrid(self.grid), *self.variables)
+    
     def to_dummy(self):
-        return self._dummy(self._ndarray, self.grid, *self._variables)
-
-    def _equals(self, other: _ScalarField):
-        if not (other is self):
-            return np.all(self._ndarray == other._ndarray) and self.Args[1:] == other.Args[1:]
-        else:
-            return True
+        return DummyScalarField(self._ndarray, self.grid, *self.variables)
 
     def as_interped_array(self):
         return InterpedArray(self._ndarray, self.grid)
 
-    def get_ndarray(self, x: Dict[_Symbol, np.ndarray], **kwargs):
+    def get_ndarray(self, x: Dict[Symbol, np.ndarray], **kwargs):
         for v in self.variables:
             if v not in x:
-                raise ValueError(f"Variable '{v}' of {self.__class__.__name__} object not included in varorder")
+                raise ValueError(f"Symbol '{v}' of {self.__class__.__name__} object not included in varorder")
 
         ordered_vars = list(self.variables)
         mygrid = list(self.grid.x)
@@ -1531,16 +1732,16 @@ class _ScalarField(_Function):
         arr = tools.interpolate(tuple(grid), arr, tuple(interpgrid))
         return tools.swapaxes(arr, ordered_vars, list(x.keys()))
 
-    def rearrange_as(self, *variables: _Symbol):
-        assert len(variables) == len(self._variables)
+    def rearrange_as(self, *variables: Symbol):
+        assert len(variables) == len(self.variables)
         for xi in variables:
-            if xi not in self._variables:
-                raise ValueError(f'Variable "{xi}" not in {self}')
+            if xi not in self.variables:
+                raise ValueError(f'Symbol "{xi}" not in {self}')
             elif variables.count(xi) > 1:
                 raise ValueError(f'Repeated variable "{xi}')
-        newaxes = [self._variables.index(x) for x in variables]
+        newaxes = [self.variables.index(x) for x in variables]
         obj = self.as_interped_array().reorder(*newaxes)
-        return self.__class__(obj._ndarray, obj.grid, *self.Args[2:])
+        return self.init(obj._ndarray, obj.grid, *self.args[2:])
 
     def directional_diff(self, x: tuple, direction: tuple, order=1, acc=1, fd='central'):
         '''
@@ -1576,66 +1777,67 @@ class _ScalarField(_Function):
         if grid.limits != grid.limits or grid.periodic != self.grid.periodic:
             raise ValueError('Grids not compatible')
         
-        return self.__class__(self.ndarray(grid=grid), grid, *self.Args[2:])
+        return self.init(self.ndarray(grid=grid), grid, *self.args[2:])
 
-    def plot(self, varorder: list[_Symbol]=None, grid: grids.Grid=None, acc=1, fd='central', ax=None, **kwargs):
+    def plot(self, grid: grids.Grid=None, acc=1, fd='central', ax=None, **kwargs):
         if varorder is None:
-            varorder = list(self._variables)
+            varorder = list(self.variables)
         if grid is None:
             grid = self.grid
-        return super().plot(varorder, grid, ax=ax, **kwargs)
+        return Expr.plot(self, grid, acc=acc, fd=fd, ax=ax, **kwargs)
+    
+    def _subs(self, vals):
+        return Subs(self, vals)
 
 
-class _DummyScalarField(_ScalarField):
 
-    def __init__(self, ndarray: np.ndarray, grid: grids.Grid, *vars: _Symbol):
-        super().__init__(ndarray, grid, 'DummyField', *vars)
-        self.Args = (ndarray, grid, *vars)
+class DummyScalarField(ScalarField):
 
+    _priority = 14
+
+    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, *vars: Symbol, simplify=True):
+        return ScalarField.__new__(cls, ndarray, grid, uuid.uuid4().hex, *vars)
+    
     @property
-    def name(self)->str:
-        return 'DummyField'
+    def name(self):
+        return "DummyField"
 
-    @property
-    def _variables(self)->tuple[_Symbol,...]:
-        return self.Args[2:]
-
-    def _equals(self, other):
-        return other is self
-
+    def init(self, arr: np.ndarray, grid: grids.Grid, *vars, simplify=True):
+        return self.__class__(arr, grid, *vars)
+    
     def _diff(self, var, acc=1, fd='central'):
         return self.diff(var, order=1, acc=acc, fd=fd)
     
-    def diff(self, var: _Symbol, order=1, acc=1, fd='central'):
-        axis = self._variables.index(var)
+    def diff(self, var: Symbol, order=1, acc=1, fd='central'):
+        axis = self.variables.index(var)
         arr = InterpedArray.diff(self, axis, order, acc, fd)._ndarray
-        return self.__class__(arr, self.grid, *self._variables)
+        return self.__class__(arr, self.grid, *self.variables)
     
-    def integrate(self, var: _Symbol):
-        if var in self._variables:
+    def integrate(self, var: Symbol):
+        if var in self.variables:
             raise ValueError(f'{self.__class__.__name__} object  does not depend on "{var}"')
         arr = InterpedArray.integrate(self, axis=self.variables.index(var))
         return self.__class__(arr, self.grid, *self.variables)
 
     def log10(self):
-        return self.__class__(np.log10(self.ndarray()), self.Args[1:])
+        return self.init(np.log10(self.ndarray()), self.args[1:])
 
 
-class _Piecewise(Node):
-    
-    Args: tuple[tuple[_Expr, Boolean], ...]
+class Piecewise(Expr):
 
-    def __new__(cls, *cases: tuple[_Expr, Boolean], simplify=True):
+    _priority = 15
+
+    def __new__(cls, *cases: tuple[Expr, Boolean], simplify=True):
         newcases = []
         for case in cases:
             assert isinstance(case[1], (Boolean, bool))
             if case[1] is False:
                 continue
             elif case[1] is True:
-                newcases.append((cls._asexpr(case[0]), True))
+                newcases.append((asexpr(case[0]), True))
                 break
             else:
-                newcases.append((cls._asexpr(case[0]), case[1]))
+                newcases.append((asexpr(case[0]), case[1]))
         cases = tuple(newcases)
         assert cases[-1][1] is True
         
@@ -1643,102 +1845,246 @@ class _Piecewise(Node):
             return cases[0][0]
         
         default = cases[-1][0]
-        if isinstance(default, _Piecewise):
-            cases = cases[:-1] + default.Args
-        obj = Node.__new__(cls, *[f[0] for f in cases])
-        obj.Args = cases
-        return obj
-
-    @cached_property
-    def args(self)->tuple[_Expr,...]:
-        return tuple([arg[0] for arg in self.Args])
+        if isinstance(default, Piecewise):
+            cases = cases[:-1] + default.args
+        return Expr.__new__(cls, *[case[0] for case in cases], *[case[1] for case in cases])
 
     @property
     def default(self):
-        return self.Args[-1][0]
+        return self.args[-2]
     
     @property
     def N(self):
-        return len(self.Args)-1
+        return len(self.args)//2
     
-    def init(self, *args: _Expr, simplify=True):
-        assert len(args) == len(self.Args)
-        return self.__class__(*[(args[i], self.Args[i][1]) for i in range(self.N)], (args[-1], True), simplify=simplify)
-    
-    def makenew(self, changefunc, *args, **kwargs):
-        return self.__class__(*[(getattr(arg[0], changefunc)(*args, **kwargs), arg[1].do(changefunc, *args, **kwargs)) for arg in self.Args[:-1]], (getattr(self.Args[-1][0], changefunc)(*args, **kwargs), True))
-
-    def neg(self):
-        return self.init(*[-arg for arg in self.args])
-    
-    def _diff(self, var: _Symbol):
-        return self.init(*[item._diff(var) for item in self.args])
-    
-    def _elementwise_boolean(self, x: Dict[_Symbol, np.ndarray], **kwargs)->tuple[np.ndarray,...]:
+    @cached_property
+    def expressions(self)->tuple[Expr, ...]:
         res = []
         for i in range(self.N):
-            res.append(self.Args[i][1].elementwise_eval(x, **kwargs))
+            res.append(self._args[2*i])
+        return tuple(res)
+    
+    @cached_property
+    def booleans(self)->tuple[Boolean, ...]:
+        res = []
+        for i in range(self.N):
+            res.append(self._args[2*i+1])
+        return tuple(res)
+    
+    @property
+    def cases(self)->tuple[tuple[Expr, Boolean], ...]:
+        return tuple([(self.expressions[i], self.booleans[i]) for i in range(self.N)])
+    
+    def remake_cases(self, attr: str, *args, **kwargs):
+        cases = []
+        for i in range(self.N):
+            cases.append((getattr(self.args[2*i], attr)(*args, **kwargs), self.args[2*i+1]))
+        return self.init(*cases)
+    
+    def init(self, *args, simplify=True):
+        cases = []
+        for i in range(len(args)//2):
+            cases.append((args[2*i], args[2*i+1]))
+
+        return self.__class__(*cases, simplify=simplify)
+
+    def _diff(self, var: Symbol):
+        return self.remake_cases("_diff", var)
+    
+    def _elementwise_boolean(self, x: Dict[Symbol, np.ndarray], **kwargs)->tuple[np.ndarray,...]:
+        res = []
+        for i in range(self.N):
+            res.append(self.booleans[i].get_ndarray(x, **kwargs))
         return tuple(res)
     
     def repr(self, lib=""):
         if lib == '':
             return f"{self.__class__.__name__}({', '.join([str(i) for i in self.Args])})"
         elif lib == 'numpy':
-            return f'numpy.where({self.Args[0][1].repr(lib)}, {self.Args[0][0].repr(lib)}, {self.__class__(*self.Args[1:]).repr(lib)})'
+            return f'numpy.where({self.booleans[0].repr(lib)}, {self.expressions[0].repr(lib)}, {self.init(*self.args[2:]).repr(lib)})'
         else:
-            return f'({self.Args[0][0].repr(lib)} if {self.Args[0][1].repr(lib)} else ({self.__class__(*self.Args[1:]).repr(lib)}))'
+            return f'({self.expressions[0].repr(lib)} if {self.booleans[0].repr(lib)} else ({self.__class__(*self.args[2:]).repr(lib)}))'
 
     def lowlevel_repr(self, scalar_type="double"):
-        return f"(({self.Args[0][1].lowlevel_repr(scalar_type)}) ? {self.Args[0][0].lowlevel_repr(scalar_type)} : {self.__class__(*self.Args[1:]).lowlevel_repr(scalar_type)})"
+        return f"(({self.booleans[0].lowlevel_repr(scalar_type)}) ? {self.expressions[0].lowlevel_repr(scalar_type)} : {self.init(*self.args[2:]).lowlevel_repr(scalar_type)})"
         
     def get_ndarray(self, x, **kwargs):
         bools = self._elementwise_boolean(x, **kwargs)
-        arrs = [arg.get_ndarray(x, **kwargs) for arg in self.args]
+        arrs = [arg.get_ndarray(x, **kwargs) for arg in self.expressions]
         res = arrs[-1]
         for i in range(self.N-1, -1, -1):
             res = np.where(bools[i], arrs[i], res)
         return res
     
+    def eval(self):
+        return self._remake_branches(Expr, "eval")
 
-class _Any(_Expr):
 
-    args = ()
+class Singleton:
 
-    def __init__(self, cls: Type[_Expr], *assumptions: str):
-        self.cls = cls
-        self.assumptions = assumptions
+    One = Integer(1)
+    Zero = Integer(0)
+    I = Complex(0, 1)
+    pi = Special('pi', 3.141592653589793)
 
-    def _equals(self, other: _Expr):
-        if isinstance(other, self.cls):
-            for attr in self.assumptions:
-                if not getattr(other, attr):
-                    return False
-            return True
+
+S = Singleton()
+
+
+def asexpr(arg)->Expr:
+    if isinstance(arg, Expr):
+        return arg
+    elif isinstance(arg, int):
+        return Integer(int(arg))
+    elif isinstance(arg, float):
+        if arg == int(arg):
+            return Integer(int(arg))
         else:
-            return False
+            return Float(float(arg))
+    elif type(arg) is complex:
+        return Complex(arg.real, arg.imag)
+    else:
+        raise ValueError(f'The object {arg} of type {arg.__class__} is not compatible with the Expr class')
 
-    def __hash__(self):
-        return hash((self.cls, self.assumptions))
-
-    def __str__(self):
-        return 'Any'
+def binomial(n, k)->Integer:
+    return Rational(math.factorial(n), math.factorial(k)*math.factorial(n-k))
 
 
-class _Singleton:
 
-    One: _Integer
-    Zero: _Integer
-    I: _Complex
-    pi: _Special
+def powsimp(expr: Expr)->Expr:
+    
+    assert isinstance(expr, Expr)
 
-from .mathbase import _Mathfunc
-from .conditional import Boolean, Gt, Lt, Ge, Le, And, Or, Not
+    if isinstance(expr, Mul):
+        base: Dict[Expr, list[Expr]] = {} #base = {power1: [base1, base2,...], power2: [base3, base4,...],...}
+        nonpow_base = []
 
-'''
+        for item in expr.args:
+            item = item.powsimp()
+            body, power = item.powargs()
+            if power == 1:
+                nonpow_base.append(item)
+            elif power in base:
+                base[power].append(body)
+            else:
+                base[power] = [body]
+        
+        muls = [Pow(Mul(*base[power]), power) for power in base]
+        return Mul(*nonpow_base, *muls, simplify=False)
+    elif isinstance(expr, Pow):
+        return expr.init(expr.base, expr.power)
+    else:
+        return expr._remake_branches(Expr, "powsimp")
 
-1) Typhinting
-2) Add And, Or in conditional
-3) Create Line2D
-4) Create VectorFields
-5) Add option for c/cpp code in lambdify
-'''
+
+def trigexpand(expr: Expr)->Expr:
+    assert isinstance(expr, Expr)
+    if not isinstance(expr, Operation):
+        return expr
+    else:
+        expr = expr.expand()
+        if isinstance(expr, Add):
+            return Add(*[trigexpand(arg) for arg in expr.args])
+        elif isinstance(expr, Mul):
+            trigs = []
+            pows = []
+            other = []
+            for arg in expr.args:
+                base, power = arg.powargs()
+                if isinstance(base, (cos, sin)) and isinstance(power, Integer):
+                    trigs.append(base)
+                    pows.append(power.value)
+                    continue
+                other.append(arg)
+            if not trigs or (len(trigs)==1 and sum(pows)<2):
+                return expr
+            else:
+                return Mul(_expand_sin_cos(trigs, pows), *other).expand()
+        else:
+            expr: Pow
+            base, power = expr.args
+            if isinstance(base, (cos, sin)) and isinstance(power, Integer):
+                if power.value > 1:
+                    return _expand_sin_cos([base], [power.value])
+            return expr
+
+def write_as_common_denominator(expr: Expr):
+    expr = expr.expand()
+    if not isinstance(expr, Add):
+        return expr
+    nums, dens = [], []
+    for arg in expr.args:
+        if isinstance(arg, Mul):
+            nums.append(arg.numerator)
+            dens.append(arg.denominator)
+        else:
+            nums.append(arg)
+            dens.append(S.One)
+    Num = []
+    for i in range(len(nums)):
+        Num.append(Mul(nums[i], *dens[:i], *dens[i+1:]))
+    return Add(*Num).expand()/Mul(*dens)
+
+def _s(trig):
+    if isinstance(trig, sin):
+        return 1
+    else:
+        return 0
+        
+def _expand_sin_cos(trigterms: list[sin|cos], powers:list[int])->Expr:        
+    powers = [n.value if isinstance(n, Integer) else n for n in powers]
+    biniter = [[binomial(n, k) for k in range(n+1)] for n in powers]
+    phaseiter = [[(2*k-n)*x.Arg+_s(x)*(k+Rational(n,2))*S.pi for k in range(n+1)] for x, n in zip(trigterms, powers)]
+    biniter = itertools.product(*biniter)
+    phaseiter = itertools.product(*phaseiter)
+    adds = []
+    for coef, phase in zip(biniter, phaseiter):
+        adds.append(Mul(*coef, cos(Add(*phase).expand())))
+    return Rational(1, 2**sum(powers)) * Add(*adds)
+
+
+def split_trig(expr: Expr):
+    if isinstance(expr, Operation):
+        return expr.init(*[split_trig(arg) for arg in expr.args])
+    elif isinstance(expr, (sin, cos)):
+        if isinstance(expr.Arg, Add):
+            return split_trig(expr.addrule(expr.Arg))
+        else:
+            return expr
+    else:
+        return expr
+
+
+def split_int_trigcoefs(expr: Expr):
+    if isinstance(expr, Operation):
+        return expr.init(*[split_int_trigcoefs(arg) for arg in expr.args])
+    elif isinstance(expr, (sin, cos)):
+        if isinstance(expr.Arg, Mul):
+            if isinstance(expr.Arg.args[0], Integer):
+                return split_int_trigcoefs(expr.split_intcoef(expr.Arg))
+        return expr
+    else:
+        return expr
+
+def _apply_seq(seq: list[Expr], other: Expr):
+    res = other
+    for i in range(len(seq)-1, -1, -1):
+        res = seq[i].apply(res)
+    return res
+
+def variables(arg: str):
+    x = arg.split(', ')
+    y = []
+    for i in x:
+        if i != '':
+            y.append(i)
+    n = len(y)
+    symbols: list[Symbol] = []
+    for i in range(n):
+        symbols.append(Symbol(y[i]))
+    return tuple(symbols)
+
+from .hashing import _HashableGrid, _HashableNdArray, Hashable, sort_by_hash
+from .mathfuncs import log, sin, cos, Abs, exp, tan, Abs, Real, Imag
+from .boolean import Gt, Lt, Ge, Le, Boolean
+from .pylambda import lambdify

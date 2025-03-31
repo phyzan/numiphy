@@ -1,7 +1,7 @@
 from __future__ import annotations
 from ..findiffs import grids
 from ..toolkit import tools
-from . import expressions as sym
+from . import symcore as sym
 import numpy as np
 from typing import Callable
 from typing import Iterable
@@ -206,7 +206,7 @@ class Line(GeomObject):
         return self.Args[1]
 
     @property
-    def _var(self)->sym.Variable:
+    def _var(self)->sym.Symbol:
         return self.Args[2]
     
     @property
@@ -327,7 +327,7 @@ class Parallelogram(Line2D):
 
         x0, y0 = x1, y1
         a, b = self.Lx, self.Ly
-        u = sym.Variable('u')
+        u = sym.Symbol('u')
         x = sym.Piecewise((x0+u*a, u<1), (x0+a, u<2), (x0+a*(3-u), u<3), (x0, True))
 
         y = sym.Piecewise((y0, u<1), (y0+(u-1)*b, u<2), (y0+b, u<3), (y0+(4-u)*b, True))
@@ -345,7 +345,7 @@ class Parallelogram(Line2D):
 
 def Circle(r: float, center: tuple[float])->Line:
 
-    t = sym.Variable('t')
+    t = sym.Symbol('t')
 
     x = center[0] + r*sym.cos(t)
     y = center[1] + r*sym.sin(t)

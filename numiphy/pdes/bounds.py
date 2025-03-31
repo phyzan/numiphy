@@ -3,7 +3,7 @@ from ..findiffs import grids
 from .. symlib import geom
 from ..findiffs import finitedifferences as fds
 from ..toolkit import tools
-from .. symlib import operators as ops
+from ..symlib import symcore as ops
 from typing import Callable, Literal, Generator
 import numpy as np
 import scipy.sparse as sp
@@ -45,7 +45,7 @@ class BoundaryConditions(ABC):
 
     grid: grids.Grid
 
-    def Lhs(self, op: ops.Operator = ops.Operator.S.One, reduced = False, acc=1, fd='central')->sp.csr_matrix:###
+    def Lhs(self, op: ops.Expr = ops.S.One, reduced = False, acc=1, fd='central')->sp.csr_matrix:###
         m = op.matrix(self.grid, acc=acc, fd=fd)
         m = self.mask().dot(m) + self.lhs()
         if reduced:
@@ -438,7 +438,7 @@ class PeriodicBcs(AxisBcs):
     def __init__(self, axis=0):
         self.axis = axis
 
-    def Lhs(self, op: ops.Operator, reduced=False, acc=1, fd='central'):
+    def Lhs(self, op: ops.Expr, reduced=False, acc=1, fd='central'):
         return op.matrix(self.grid, acc=acc, fd=fd)
     
     def Rhs(self, arr: np.ndarray, *args):
