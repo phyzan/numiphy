@@ -211,11 +211,11 @@ class Expr:
                     return True
             return False
     
-    def ndarray(self, grid: grids.Grid, acc=1, fd='central')->np.ndarray:
-        return self.get_ndarray({x: arr for x, arr in zip(sort_by_hash(*self.variables), grid.x)}, acc=acc, fd=fd)
+    def ndarray(self, symbols: tuple[Symbol, ...], grid: grids.Grid, acc=1, fd='central')->np.ndarray:
+        return self.get_ndarray({x: arr for x, arr in zip(symbols, grid.x)}, acc=acc, fd=fd)
     
-    def array(self, grid: grids.Grid, acc=1, fd='central'):
-        return self.ndarray(grid, acc, fd).flatten(order='F')
+    def array(self, symbols: tuple[Symbol, ...], grid: grids.Grid, acc=1, fd='central'):
+        return self.ndarray(symbols, grid, acc, fd).flatten(order='F')
     
     def varsub(self, data: dict[Symbol, Symbol]):
         for (x, v) in data.items():
@@ -257,10 +257,10 @@ class Expr:
         else:
             return res
 
-    def integral(self, grid: grids.Grid, acc=1, fd='central'):
-        return tools.full_multidim_simpson(self.ndarray(grid, acc, fd), *grid.x)
+    def integral(self, symbols: tuple[Symbol, ...], grid: grids.Grid, acc=1, fd='central'):
+        return tools.full_multidim_simpson(self.ndarray(symbols, grid, acc, fd), *grid.x)
 
-    def dummify(self, grid: grids.Grid=None, acc=1, fd='central'):
+    def dummify(self, symbols: tuple[Symbol, ...], grid: grids.Grid=None, acc=1, fd='central'):
         if grid is None:
             gs = []
             for x in self.variables:
@@ -271,19 +271,19 @@ class Expr:
                     raise ValueError(f'No 1D-grid along the {x} variable inside the expression to dummify')
             grid = grids.NdGrid(*gs)
         
-        return DummyScalarField(self.ndarray(grid, acc, fd), grid, *self.variables)
+        return DummyScalarField(self.ndarray(symbols, grid, acc, fd), grid, *self.variables)
 
-    def plot(self, grid: grids.Grid, acc=1, fd='central', ax=None, **kwargs):
-        return plot(self.ndarray(grid, acc, fd), grid, ax, **kwargs)
+    def plot(self, symbols: tuple[Symbol,...], grid: grids.Grid, acc=1, fd='central', ax=None, **kwargs):
+        return plot(self.ndarray(symbols, grid, acc, fd), grid, ax, **kwargs)
     
-    def animate(self, var: Symbol, duration: float, save: str, grid: grids.Grid, display = True, **kwargs):
+    def animate(self, var: Symbol, symbols: tuple[Symbol,...], duration: float, save: str, grid: grids.Grid, display = True, **kwargs):
         if 'fps' in kwargs:
             fps = kwargs['fps']
             del kwargs['fps']
             grid = grid.replace(axis, grids.Uniform1D(*grid.limits[axis], fps*duration, grid.periodic[axis]))
-            f = self.ndarray(grid)
+            f = self.ndarray(symbols, grid)
         else:
-            f = self.ndarray(grid)
+            f = self.ndarray(symbols, grid)
         axis = self.variables.index(var)
         return animate(str(var), f, duration, save, grid, axis, display, **kwargs)
         
@@ -426,13 +426,26 @@ class Expr:
         else:
             return self._remake_branches(Expr, "_subs", vals)
 
-    def matrix(self, grid: grids.Grid, acc=1, fd='central')->sp.csr_matrix:
+    def matrix(self, symbols: tuple[Symbol, ...], grid: grids.Grid, acc=1, fd='central')->sp.csr_matrix:
         '''
         override
         '''
-        return tools.as_sparse_diag(self.array(grid, acc=acc, fd=fd))
+        return tools.as_sparse_diag(self.array(symbols, grid, acc=acc, fd=fd))
 
 
+    @cached_property
+    def oper_symbols(self)->tuple[Symbol, ...]:
+        res = ()
+        for arg in self.branches:
+            for x in arg.variables:
+                if x not in res:
+                    res += (x,)
+
+        Dx: Diff
+        for Dx in self.deepsearch(Diff):
+            if Dx.symbol not in res:
+                res += (Dx.symbol,)
+        return tools.sort(res, [Hashable(x) for x in res])[0]
 
 
     @property
@@ -708,8 +721,8 @@ class Add(Operation):
     def get_ndarray(self, x, **kwargs):
         return np.sum([arg.get_ndarray(x, **kwargs) for arg in self._args], axis=0)
     
-    def matrix(self, grid, acc=1, fd='central'):
-        return sum([arg.matrix(grid, acc, fd) for arg in self.args], start=grid.empty_matrix())
+    def matrix(self, symbols: tuple[Symbol, ...], grid, acc=1, fd='central'):
+        return sum([arg.matrix(symbols, grid, acc, fd) for arg in self.args], start=grid.empty_matrix())
     
 
 class Mul(Operation):
@@ -918,8 +931,8 @@ class Mul(Operation):
     def get_ndarray(self, x, **kwargs):
         return np.prod([arg.get_ndarray(x, **kwargs) for arg in self._args], axis=0)
     
-    def matrix(self, grid, acc=1, fd='central'):
-        return tools.multi_dot_product(*[f.matrix(grid, acc, fd) for f in self.args])
+    def matrix(self, symbols: tuple[Symbol, ...], grid, acc=1, fd='central'):
+        return tools.multi_dot_product(*[f.matrix(symbols, grid, acc, fd) for f in self.args])
 
 
 class Pow(Operation):
@@ -1019,9 +1032,9 @@ class Pow(Operation):
     def get_ndarray(self, x, **kwargs):
         return np.power(*[arg.get_ndarray(x, **kwargs) for arg in self._args])
     
-    def matrix(self, grid, acc=1, fd='central'):
+    def matrix(self, symbols: tuple[Symbol, ...], grid, acc=1, fd='central'):
         if self.is_operator:
-            return tools.multi_dot_product(*(self.power.value*[self.base.matrix(grid, acc, fd)]))
+            return tools.multi_dot_product(*(self.power.value*[self.base.matrix(symbols, grid, acc, fd)]))
         else:
             return tools.as_sparse_diag(self.array(grid, acc, fd))
 
@@ -1079,7 +1092,7 @@ class Number(Atom):
     def eval(self):
         return asexpr(self.value)
     
-    def matrix(self, grid, acc=1, fd='central'):
+    def matrix(self, symbols: tuple[Symbol, ...], grid, acc=1, fd='central'):
         return self.value * sp.identity(grid.n, format='csr')
 
     
@@ -1573,8 +1586,8 @@ class Diff(Expr):
     def raiseto(self, power):
         return Diff(self.symbol, self.order*power)
     
-    def matrix(self, grid, acc=1, fd='central'):
-        return grid.partialdiff_matrix(order=self.order, axis=self.symbol.axis, acc=acc, fd=fd)
+    def matrix(self, symbols: tuple[Symbol, ...], grid, acc=1, fd='central'):
+        return grid.partialdiff_matrix(order=self.order, axis=symbols.index(self.symbol), acc=acc, fd=fd)
     
     def _subs(self, vals):
         if self.symbol in vals:
@@ -1787,7 +1800,7 @@ class ScalarField(Function):
         if grid.limits != grid.limits or grid.periodic != self.grid.periodic:
             raise ValueError('Grids not compatible')
         
-        return self.init(self.ndarray(grid=grid), grid, *self.args[2:])
+        return self.init(self.ndarray(self.variables, grid=grid), grid, *self.args[2:])
 
     def plot(self, grid: grids.Grid=None, acc=1, fd='central', ax=None, **kwargs):
         if varorder is None:
@@ -2095,6 +2108,6 @@ def variables(arg: str):
     return tuple(symbols)
 
 from .hashing import _HashableGrid, _HashableNdArray, Hashable, sort_by_hash
-from .mathfuncs import log, sin, cos, Abs, exp, tan, Abs, Real, Imag
+from .mathfuncs import log, sin, cos, Abs, exp, tan, Abs, Real, Imag, Mathfunc
 from .boolean import Gt, Lt, Ge, Le, Boolean
 from .pylambda import lambdify

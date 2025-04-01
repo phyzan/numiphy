@@ -22,7 +22,7 @@ class LinearBVP:
 
     def get_ScalarField(self, name: str, acc=1, fd='central'):
         res = self.solve(acc, fd)[-1]
-        return ops.ScalarField(res, self.grid, name, self.op.variables)
+        return ops.ScalarField(res, self.grid, name, self.op.oper_symbols)
     
 
 class InhomLinearBVP(LinearBVP):

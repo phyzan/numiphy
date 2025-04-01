@@ -1,4 +1,4 @@
-from .. symlib import symcore as ops
+from .. symlib.symcore import *
 from ..findiffs import grids
 from ..toolkit import tools
 from . import bounds
@@ -157,27 +157,27 @@ class CachedVar(CachedOperator):
         return val * sp.identity(grid.n-self.n_ded, format='csr')
     
 
-def cache_operator(op: ops.Expr, grid: grids.Grid, bcs: bounds.GroupedBcs=None, acc=1, fd='central')->CachedOperator:
+def cache_operator(op: Expr, symbols: tuple[Symbol, ...], grid: grids.Grid, bcs: bounds.GroupedBcs=None, acc=1, fd='central')->CachedOperator:
     if bcs is not None:
         if not bcs.is_homogeneous:
             raise ValueError('Boundary conditions that are given as input in order to cache an operator need to be homogeneous, so that matrices can be reduced accordingly')
-    if isinstance(op, ops.AddOp):
-        return CachedAdd.simplify(*[cache_operator(arg, grid, bcs, acc, fd) for arg in op.args])
-    elif isinstance(op, ops.MulOp):
-        return CachedMul.simplify(*[cache_operator(arg, grid, bcs, acc, fd) for arg in op.args])
-    elif isinstance(op, ops.PowOp):
-        base = cache_operator(op.base, grid, bcs, acc, fd)
-        exp = cache_operator(op.power, grid, bcs, acc, fd)
+    if isinstance(op, Add):
+        return CachedAdd.simplify(*[cache_operator(arg, symbols, grid, bcs, acc, fd) for arg in op.args])
+    elif isinstance(op, Mul):
+        return CachedMul.simplify(*[cache_operator(arg, symbols, grid, bcs, acc, fd) for arg in op.args])
+    elif isinstance(op, Pow):
+        base = cache_operator(op.base, symbols, grid, bcs, acc, fd)
+        exp = cache_operator(op.power, symbols, grid, bcs, acc, fd)
         return CachedPow.simplify(base, exp)
-    elif isinstance(op, ops.Diff):
-        m = op.matrix(grid, acc, fd)
+    elif isinstance(op, Diff):
+        m = op.matrix(symbols, grid, acc, fd)
         if bcs is None:
             return MatrixOperator(m)
         else:
             return MatrixOperator(bcs.reduced_matrix(m))
-    elif isinstance(op, ops.VariableOp):
+    elif isinstance(op, Symbol):
         if op.axis < grid.nd:
-            arr = op.array(grid)
+            arr = op.array(symbols, grid)
             if bcs is None:
                 return DiagonalMatrixOperator(arr)
             else:
@@ -188,7 +188,7 @@ def cache_operator(op: ops.Expr, grid: grids.Grid, bcs: bounds.GroupedBcs=None, 
             else:
                 return CachedVar(op.axis, deduct=len(bcs.reserved_nods()))
     else:
-        arr = op.array(grid)
+        arr = op.array(symbols, grid)
         if bcs is None:
             return DiagonalMatrixOperator(arr)
         else:

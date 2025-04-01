@@ -2,13 +2,14 @@ from __future__ import annotations
 from typing import Callable
 from ..findiffs import grids
 from . import bounds
-from ..symlib import symcore as sym
+from ..symlib.symcore import *
 from . import cached
 from ..toolkit import tools
 from .. import odesolvers as ods
 from . import linalg
 import numpy as np
 from abc import ABC, abstractmethod
+from scipy.integrate import solve_ivp
 
 
 class Propagator:
@@ -43,7 +44,7 @@ class Propagator:
 
 class IVP(ABC):
 
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, *operators: sym.Operator):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, *operators: Expr):
         bcs.apply_grid(grid)
         self.grid = bcs.grid
         self.bcs = bcs
@@ -71,14 +72,12 @@ class IVP(ABC):
         '''
         q0 = self.bcs.discretize(self.f0, 0)
         if self.bcs.is_homogeneous:
-            ops = tuple([cached.cache_operator(op, self.grid, self.bcs, acc, fd) for op in self.operators])
-            ics = (ics[0], self.bcs.reduced_array(q0))
-            ode = ods.LowLevelODE(self.dfdt, t0=0, q0=self.bcs.reduced_array(ics[1]), args=ops, **ode_args)
-            res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
+            ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, self.bcs, acc, fd) for op in self.operators])
+            res = solve_ivp(self.dfdt, (0, t), y0=self.bcs.reduced_array(q0), args=ops, **ode_args)
             x = res.t
-            f = self.bcs.insert(res.q)
+            f = self.bcs.insert(res.y.T)
         else:
-            ops = tuple([cached.cache_operator(op, self.grid, acc=acc, fd=fd) for op in self.operators])
+            ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, acc=acc, fd=fd) for op in self.operators])
             ode = ods.LowLevelODE(self.dfdt, t0=0, q0=q0, args=ops, mask=self.apply_bcs, **ode_args)
             res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
             x = res.t
@@ -90,20 +89,20 @@ class IVP(ABC):
         general method, even for non linear problems. I need to get the varnames when i have many operators.
         for linear IVP problems this is easy, it is just self.op.varnames because there is only one op.
         '''
-        v: list[sym.VariableOp] = []
+        v: list[Symbol] = []
         for arg in self.operators:
-            for x in arg.variables:
+            for x in arg.oper_symbols:
                 if x not in v:
                     v.append(x)
-        variables: list[sym.VariableOp] = tools.sort(v, [x.axis for x in v])[0]
+        variables: list[Symbol] = tools.sort(v, [x.axis for x in v])[0]
         t, f = self.solve(t=t, acc=acc, fd=fd, **ode_args)
 
-        return sym.ScalarFieldOp(f, self.grid*grids.Unstructured1D(t), name, *variables, sym.VariableOp('t', len(variables)))
+        return ScalarField(f, self.grid*grids.Unstructured1D(t), name, *variables, Symbol('t', len(variables)))
 
 
 class LinearIVP(IVP):
 
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Operator):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: Expr):
         super().__init__(bcs, grid, operator)
         self.ivp_op = operator
 
@@ -114,7 +113,7 @@ class LinearIVP(IVP):
 
 class InhomLinearIVP(LinearIVP):
 
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Operator, source: Callable[..., np.ndarray]):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: Expr, source: Callable[..., np.ndarray]):
         super().__init__(bcs, grid, operator)
         self._src = source
 
@@ -146,18 +145,18 @@ class HomLinearIBVP(HomLinearIVP):
     '''
     Homogeneous linear initial value problem with homogeneous boundary conditions
     '''
-    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: sym.Operator, coef = 1.0):
+    def __init__(self, bcs: bounds.GroupedBcs, grid: grids.Grid, operator: Expr, coef = 1.0):
         if not bcs.is_homogeneous:
             raise ValueError('HomLinearIBVP needs homogeneous boundary conditions')
         super().__init__(bcs, grid, (coef*operator).expand())
         self.eigproblem = linalg.EigProblem(operator, bcs, self.grid)
         self._coef = coef
 
-    def solve(self, t, first_step, acc=1, fd='central', **ode_args):
+    def solve(self, t, acc=1, fd='central', **ode_args):
         method = ode_args.pop("method", None)
         if method == 'propagator':
             self.arm_propagator()
-            t_arr = np.append(np.arange(0, t, first_step), [t])
+            t_arr = np.append(np.arange(0, t, ode_args["dt"]), [t])
             return t_arr, self.propagate(t_arr)
         else:
             if method is not None:
@@ -188,7 +187,7 @@ class IVPsystem2D(ABC):
         Similarly, dfdt = [dudt, dvdt]
 
     '''
-    def __init__(self, bcs1: bounds.GroupedBcs, bcs2: bounds.GroupedBcs, grid: grids.Grid, *operators: sym.Operator):
+    def __init__(self, bcs1: bounds.GroupedBcs, bcs2: bounds.GroupedBcs, grid: grids.Grid, *operators: Expr):
 
         self.bcs1 = bcs1
         self.bcs2 = bcs2
@@ -218,7 +217,7 @@ class IVPsystem2D(ABC):
         f0 = self.joker.copy()
         f0[0, :] = self.bcs1.discretize(self.u0, 0)
         f0[1, :] = self.bcs2.discretize(self.v0, 0)
-        ops = tuple([cached.cache_operator(op, self.grid, acc=acc, fd=fd) for op in self.operators])
+        ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, acc=acc, fd=fd) for op in self.operators])
 
         max_frames=ode_args.pop("max_frames", -1)
         max_prints=ode_args.pop("max_prints", 0)
@@ -240,13 +239,13 @@ class IVPsystem2D(ABC):
 
 class Wave(IVPsystem2D, HomLinearIVP):
     
-    def __init__(self, c: sym.Operator, bcs: bounds.GroupedBcs, grid: grids.Grid):
+    def __init__(self, c: Expr, bcs: bounds.GroupedBcs, grid: grids.Grid):
         if grid.nd == 1:
-            x = sym.VariableOp('x', 0)
-            Laplacian = sym.Diff(x)**2
+            x = Symbol('x', 0)
+            Laplacian = Diff(x)**2
         elif grid.nd == 2:
-            x, y = sym.VariableOp('x', 0), sym.VariableOp('y', 1)
-            Laplacian = sym.Diff(x)**2 + sym.Diff(y)**2
+            x, y = Symbol('x', 0), Symbol('y', 1)
+            Laplacian = Diff(x)**2 + Diff(y)**2
         HomLinearIVP.__init__(self, bcs, grid, c**2*Laplacian)
         IVPsystem2D.__init__(self, bcs, bcs.diff(), grid, c**2*Laplacian)
 

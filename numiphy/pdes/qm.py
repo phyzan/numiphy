@@ -27,8 +27,8 @@ class Schroedinger1D(ivps.HomLinearIBVP):
         self.bcs = bounds.StaticBcs(*self.bcs.newcopy().bcs, bc)
         self.eigproblem = linalg.EigProblem(self.H, self.bcs, self.grid)
     
-    def get_ScalarField(self, t, dt, method='RK45', rtol=0., max_frames=-1, display=True):
-        return super().get_ScalarField('Ψ', t, dt, method, rtol, max_frames, display)
+    def get_ScalarField(self, t, acc=1, fd='central', **ode_args):
+        return super().get_ScalarField('Ψ', t, acc, fd, **ode_args)
 
     def eigfunc(self, i, normalized=True):
         return self.grid.x[0], self.eigproblem.eigenvec(i, normalized)

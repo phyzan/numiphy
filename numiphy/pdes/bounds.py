@@ -46,7 +46,7 @@ class BoundaryConditions(ABC):
     grid: grids.Grid
 
     def Lhs(self, op: ops.Expr = ops.S.One, reduced = False, acc=1, fd='central')->sp.csr_matrix:###
-        m = op.matrix(self.grid, acc=acc, fd=fd)
+        m = op.matrix(op.oper_symbols, self.grid, acc=acc, fd=fd)
         m = self.mask().dot(m) + self.lhs()
         if reduced:
             return self.reduced_matrix(m)
@@ -439,7 +439,7 @@ class PeriodicBcs(AxisBcs):
         self.axis = axis
 
     def Lhs(self, op: ops.Expr, reduced=False, acc=1, fd='central'):
-        return op.matrix(self.grid, acc=acc, fd=fd)
+        return op.matrix(op.oper_symbols, self.grid, acc=acc, fd=fd)
     
     def Rhs(self, arr: np.ndarray, *args):
         return arr

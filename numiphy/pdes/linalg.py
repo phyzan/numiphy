@@ -1,9 +1,7 @@
 from __future__ import annotations
 from . import bounds
 from ..findiffs import grids
-from ..symlib import symcore as sym
-from ..symlib.symcore import Function
-from ..symlib.mathfuncs import Mathfunc
+from ..symlib.symcore import *
 from ..toolkit import tools
 import scipy.linalg as sl
 import numpy as np
@@ -18,12 +16,12 @@ CHECK HERMICITY CONDITIONS. MAYBE AN SL OPERATOR IS HERMITIAN WITH PROPER BCS
 DETERMINTE ADJOINT AND HERMICITY WITH WEIGHT FUNCTION. MAYBE STURM LIOUVILLE ONLY IN 1D
 '''
 
-def has_adjoint(op: sym.Expr, bcs: bounds.GroupedBcs):
+def has_adjoint(op: Expr, bcs: bounds.GroupedBcs):
     for arg in op.deepsearch():
-        if isinstance(arg, sym.Symbol):
+        if isinstance(arg, Symbol):
             if arg.axis >=  bcs.nd:
                 raise ValueError(f'The "{arg.name}" variable has axis={arg.axis}, while the boundary conditions correspond to a lower, {bcs.nd}-dimensional, space')
-        elif isinstance(arg, sym.Diff):
+        elif isinstance(arg, Diff):
             assert has_adjoint(arg.symbol, bcs)
             for bc in bcs.bcs:
                 if not bc.is_homogeneous:
@@ -51,7 +49,7 @@ def has_adjoint(op: sym.Expr, bcs: bounds.GroupedBcs):
     
     return True
 
-def is_hermitian(op: sym.Operator, bcs: bounds.GroupedBcs):
+def is_hermitian(op: Expr, bcs: bounds.GroupedBcs):
     return op.adjoint() == op and has_adjoint(op, bcs)
 
 
@@ -62,7 +60,7 @@ class EigProblem:
 
     eigp1D: tuple[EigProblem]
 
-    def __init__(self, operator: sym.Operator, bcs: bounds.GroupedBcs, grid: grids.Grid):
+    def __init__(self, operator: Expr, bcs: bounds.GroupedBcs, grid: grids.Grid):
         if not bcs.is_homogeneous:
             raise NotImplementedError('Diagonalization has not been implemented for problems with non homogeneous boundary conditions')
         if not (operator == operator.expand()):
@@ -78,7 +76,7 @@ class EigProblem:
             eigp1D = []
             for i in range(len(q)):
                 axis = q[i].variables[0].axis
-                eigp1D.append(EigProblem(q[i].toaxis(0), bounds.GroupedBcs(bcs.ext_bcs[axis].newcopy(0)), self.grid.grids[axis]))
+                eigp1D.append(EigProblem(q[i].varsub({q[i].variables[0]: Symbol(q[i].name, axis=0)}), bounds.GroupedBcs(bcs.ext_bcs[axis].newcopy(0)), self.grid.grids[axis]))
             self.eigp1D = tuple(eigp1D)
         else:
             self.is_separable = False
@@ -158,8 +156,8 @@ class SturmLiouville:
     e: np.ndarray
     f: np.ndarray
 
-    def __init__(self, p: sym.Operator, q: sym.Operator, r: sym.Operator, bcs: bounds.AxisBcs, grid: grids.Uniform1D):
-        p, q, r = sym.asexpr(p), sym.asexpr(q), sym.asexpr(r)
+    def __init__(self, p: Expr, q: Expr, r: Expr, bcs: bounds.AxisBcs, grid: grids.Uniform1D):
+        p, q, r = asexpr(p), asexpr(q), asexpr(r)
         for f in (p, q, r):
             if len(f.variables) > 1:
                 raise ValueError('Variables must be at most 1')
@@ -179,26 +177,26 @@ class SturmLiouville:
         self.grouped_bcs.apply_grid(grid)
         self.grid = bcs.grid
         if len(x) == 0:
-            self.var = sym.Symbol('x')
+            self.var = Symbol('x')
         else:
             self.var = x[0]
 
         if p == 1 and q == 0:
-            self.w = sym.I
+            self.w = S.One
         else:
-            self.w = 1/p * sym.exp(sym.asintegral(q/p, self.var))
+            self.w = 1/p * exp(Integral(q/p, self.var, 0, self.var))
 
-        Dx = sym.Diff(self.var)
+        Dx = Diff(self.var)
 
         self.operator = p*Dx**2 + q*Dx + r
 
         self._op = Dx*self.w*p*Dx + r*self.w #is obviously self-adjoint
 
     def solve(self):
-        op = self._op.expand()
+        op = self._op.Expand()
 
-        if (op - op.adjoint()).expand() != 0: #sanity check
-            raise ValueError('Operator should be self-adjoint but is not. Check Sturm-Liouville implementation and expand operation')
+        if (op - op.adjoint()).Expand() != 0: #sanity check
+            raise ValueError('Operator should be self-adjoint but is not. Check Sturm-Liouville implementation and Expand operation')
         
         m = self.bcs.Lhs(op, reduced=True)
         if not tools.is_sparse_herm(m):
@@ -207,8 +205,8 @@ class SturmLiouville:
 
 
         w_arr = self.bcs.reduced_array(self.w.array(self.grid))
-        if isinstance(self.w, sym.Const):
-            m = m/self.w.a
+        if isinstance(self.w, Number):
+            m = m/self.w.value
             e, f = sl.eigh_tridiagonal(m.diagonal(0), m.diagonal(1))
         else:
             e, f = sl.eigh(m.toarray(), np.diag(w_arr))
