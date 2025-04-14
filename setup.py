@@ -11,9 +11,9 @@ import subprocess
 class CustomInstall(install):
     def run(self):
         print('Installing c++ headers...')
-        # subprocess.check_call('sudo apt install libmpfrc++-dev', shell=True)
-        # subprocess.check_call('sudo apt install libeigen3-dev', shell=True)
-        # subprocess.check_call('git clone https://github.com/phyzan/odepack && cd odepack && chmod +x install.sh && sudo ./install.sh && cd ..', shell=True)
+        subprocess.check_call('sudo apt install libmpfrc++-dev', shell=True)
+        subprocess.check_call('sudo apt install libeigen3-dev', shell=True)
+        subprocess.check_call('git clone https://github.com/phyzan/odepack && cd odepack && chmod +x install.sh && sudo ./install.sh && cd ..', shell=True)
         package_dir = self.build_lib
         target_dir = os.path.join(package_dir, "numiphy", "odesolvers")
         odepack_name = "odepack"
