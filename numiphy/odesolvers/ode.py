@@ -1,6 +1,10 @@
 from .lowlevelsupport import *
+from .odepack import _DynamicODE #type: ignore
 
-class ODE(OdeBase):
+
+
+
+class DynamicOde(_DynamicODE):
 
     _sys: list[OdeSystem] = []
     _ptrs = []
@@ -22,3 +26,16 @@ class ODE(OdeBase):
         if mask_ptr() is not None:
             first_args += (mask_ptr(),)
         super().__init__(*first_args, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=ev_ptr(), savedir=savedir, save_events_only=save_events_only)
+
+
+class Orbit(ODE):
+
+    def __init__(self, ode: ODE):
+        ODE.__init__(self)
+        self._ode_obj = ode
+
+    def __getattribute__(self, name):
+        if name == "_ode_obj":
+            return object.__getattribute__(self, name)
+        else:
+            return getattr(self._ode_obj, name)

@@ -296,17 +296,12 @@ class OdeSystem:
         grouped: dict[int, list[tuple[LowLevelODE, int]]] = {}
         for i, ode in enumerate(odes):
             if ode.dim not in grouped:
-                grouped[ode.dim] = [ode]
+                grouped[ode.dim] = [(ode, i)]
             else:
-                grouped[ode.dim].append(ode)
-        res = [None for _ in odes]
+                grouped[ode.dim].append((ode, i))
         for dim in grouped:
             ode_arr = [l[0] for l in grouped[dim]]
-            pos = [l[1] for l in grouped[dim]]
-            oderes = self._int_all_func[dim](ode_arr, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, threads=threads, max_prints=max_prints)
-            for i in range(len(oderes)):
-                res[pos[i]] = oderes[i]
-        return res
+            self._int_all_func[dim](ode_arr, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, threads=threads, max_prints=max_prints)
     
     def _ode_generator(self, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
         modname = self.module_name
