@@ -36,6 +36,9 @@ class Grid:
     
     def __pow__(self, n: int)->NdGrid:
         return NdGrid(*(n*list(self.grids)))
+    
+    def __iter__(self):
+        return self.coords_iterator()
 
     def node(self, *coords: float)->tuple[int]:
         pass

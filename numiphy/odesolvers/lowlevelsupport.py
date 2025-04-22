@@ -134,7 +134,7 @@ class SymbolicPeriodicEvent(AnySymbolicEvent):
         if isinstance(other, SymbolicPeriodicEvent):
             if other is self:
                 return True
-            elif (self.period, self.start) == (other.period, other.mask):
+            elif (self.period, self.start) == (other.period, other.start):
                 return AnySymbolicEvent.__eq__(self, other)
         return False
             
@@ -152,18 +152,19 @@ class SymbolicStopEvent(AnySymbolicEvent):
 
     _cls = 'StopEvent'
 
-    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False):
+    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False, kill=False):
         AnySymbolicEvent.__init__(self, name, mask, hide_mask)
         if not isinstance(event, Expr):
             raise ValueError("Expr argument must be a valid symbolic expression")
         self.event = event
         self.check_if = check_if
+        self.kill = kill
 
     def __eq__(self, other):
         if isinstance(other, SymbolicStopEvent):
             if other is self:
                 return True
-            elif (self.event, self.check_if) == (other.event, other.check_if):
+            elif (self.event, self.check_if, self.kill) == (other.event, other.check_if, other.kill):
                 return AnySymbolicEvent.__eq__(self, other)
         return False
 
@@ -177,22 +178,33 @@ class SymbolicStopEvent(AnySymbolicEvent):
         mask = "nullptr"
         if self.mask is not None:
             mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
-        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'});'
+        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {'true' if self.kill else 'false'});'
 
 
 
 class OdeSystem:
 
-    _counter = 0
-    _int_all_func: dict[int] = dict()
-    _compiled_odes: dict[tuple, LowLevelODE] = dict()
+    _cls_instances: list[OdeSystem] = []
 
-    def __init__(self, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
-        self.ode_sys = tuple(ode_sys)
-        self.args = tuple(args)
-        self.t = t
-        self.q = q
-        self.events = tuple(events)
+    _counter = 0
+
+    ode_sys: tuple[Expr, ...]
+    args: tuple[Symbol, ...]
+    t: Symbol
+    q: tuple[Symbol, ...]
+    events: tuple[AnySymbolicEvent, ...]
+    _int_all_func: dict[int]
+    _compiled_odes: dict[tuple, LowLevelODE]
+
+    def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
+        obj = object.__new__(cls)
+        return cls._process_args(obj, ode_sys, t, *q, args=args, events=events)
+    
+    @classmethod
+    def _process_args(cls, obj: OdeSystem, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
+        ode_sys = tuple(ode_sys)
+        args = tuple(args)
+        events = tuple(events)
 
         given = (t,)+q+args
         assert tools.all_different(given)
@@ -207,6 +219,19 @@ class OdeSystem:
             assert len(odesymbols) <= len(given)
         else:
             assert len(odesymbols) <= len(given) - 1
+        
+        obj.ode_sys = ode_sys
+        obj.args = args
+        obj.t = t
+        obj.q = q
+        obj.events = events
+        obj._int_all_func = dict()
+        obj._compiled_odes = dict()
+        for i in range(len(cls._cls_instances)):
+            if cls._cls_instances[i] == obj:
+                return cls._cls_instances[i]
+        cls._cls_instances.append(obj)
+        return obj
 
     def __eq__(self, other: OdeSystem):
         if other is self:
@@ -284,7 +309,7 @@ class OdeSystem:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack, scalar_type=scalar_type)
             tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
 
-    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
+    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->ODE:
         if len(args) != len(self.args):
             raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
         params = (t0, q0, rtol, atol, min_step, max_step, first_step, args, method, savedir, save_events_only)

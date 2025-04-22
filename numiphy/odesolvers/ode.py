@@ -9,7 +9,7 @@ class DynamicOde(_DynamicODE):
     _sys: list[OdeSystem] = []
     _ptrs = []
 
-    def __init__(self, odesys: OdeSystem, t0, q0, *, rtol=0.000001, atol=1e-12, min_step=0, max_step=np.inf, first_step=0, args: tuple[float]=(), method="RK45", savedir="", save_events_only=False):
+    def __init__(self, odesys: OdeSystem, t0, q0, *, rtol=1e-6, atol=1e-12, min_step=0, max_step=np.inf, first_step=0, args: tuple[float]=(), method="RK45", savedir="", save_events_only=False):
         _sys = self.__class__._sys
         _ptrs = self.__class__._ptrs
         found = False
@@ -37,5 +37,16 @@ class Orbit(ODE):
     def __getattribute__(self, name):
         if name == "_ode_obj":
             return object.__getattribute__(self, name)
+        elif name in object.__getattribute__(self, "_attrs")():
+            return object.__getattribute__(self, name)
         else:
             return getattr(self._ode_obj, name)
+        
+    @classmethod
+    def _attrs(cls):
+        attrs = {}
+        for base in object.__getattribute__(cls, "__mro__"):
+            if base is ODE:
+                break
+            attrs.update(object.__getattribute__(base, "__dict__"))
+        return attrs

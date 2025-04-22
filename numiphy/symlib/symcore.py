@@ -760,32 +760,31 @@ class Mul(Operation):
                 else:
                     newseq.append(arg)
             
-            simp_seq: list[Expr] = []
-            for arg in newseq:
-                simp_seq.append(arg)
-                j = len(simp_seq)-2
-                while arg.trivially_commutes_with(simp_seq[j]) and j >= 0:
-                    base1, p1 = simp_seq[j].powargs()
-                    base2, p2 = arg.powargs()
+            j = len(newseq) - 1
+            while j > 0:
+                k = j-1
+                while newseq[j].trivially_commutes_with(newseq[k]) and k >= 0:
+                    base1, p1 = newseq[j].powargs()
+                    base2, p2 = newseq[k].powargs()
                     if base1 == base2:
-                        power = p1 + p2
+                        power = p1+p2
+                        newseq.pop(j)
                         if power != 0:
-                            simp_seq[j] = base1**power
+                            newseq[k] = base1**power
                         else:
-                            simp_seq.pop(j)
-                        simp_seq.pop(-1)
-                        break
-                    elif j == 0:
-                        break
+                            newseq.pop(k)
+                        j = len(newseq) - 1
+                        k = j-1
                     else:
-                        j -= 1
-            
+                        k -= 1
+                j -= 1
+
             res = []
             if _float != 1:
                 res.append(asexpr(_float))
             if rational != 1:
                 res.append(rational)
-            res = res + simp_seq
+            res = res + newseq
         else:
             pow: Dict[Expr, list[Expr]] = {}
             for arg in flatseq:
@@ -2106,6 +2105,11 @@ def variables(arg: str):
     for i in range(n):
         symbols.append(Symbol(y[i]))
     return tuple(symbols)
+
+
+def sqrt(x: Expr):
+    return x ** Rational(1, 2)
+
 
 from .hashing import _HashableGrid, _HashableNdArray, Hashable, sort_by_hash
 from .mathfuncs import log, sin, cos, Abs, exp, tan, Abs, Real, Imag, Mathfunc
