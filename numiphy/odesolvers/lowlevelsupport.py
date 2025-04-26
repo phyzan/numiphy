@@ -64,49 +64,31 @@ class VectorLowLevelCallable(_VectorCallable, _LowLevelCallable):
             return 'return {'+r+'};'
 
 
+class SymbolicEvent:
 
-class AnySymbolicEvent:
-
-    _cls: str
+    _cls = 'PreciseEvent'
     name: str
     mask: Iterable[Expr]
     hide_mask: bool
 
-    def __init__(self, name: str, mask: Iterable[Expr], hide_mask: bool):
-        if type(self) is AnySymbolicEvent:
-            raise ValueError("AnySymbolicEvent class cannot be directly instanciated")
-        self.name = name
-        self.mask = mask
-        self.hide_mask = hide_mask
-
-    def __eq__(self, other: AnySymbolicEvent):
-        return (self.name, self.mask, self.hide_mask) == (other.name, other.mask, other.hide_mask)
-
-    def arg_list(self, *q: Symbol, args: Iterable[Symbol], stack: bool):
-        return dict(q=ContainerLowLevel(_vec(stack), *q), args=ContainerLowLevel(_vector, *args))
-
-    def init_code(self, var_name, scalar_type: str, t: Symbol, *q: Symbol, args: Iterable[Symbol], stack=True)->str:...
-
-
-class SymbolicEvent(AnySymbolicEvent):
-
-    _cls = 'Event'
-
     def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False, event_tol=1e-12):
-        AnySymbolicEvent.__init__(self, name, mask, hide_mask)
-        if not isinstance(event, Expr):
-            raise ValueError("Expr argument must be a valid symbolic expression")
+        self.name = name
         self.event = event
         self.check_if = check_if
+        self.mask = mask
+        self.hide_mask = hide_mask
         self.event_tol = event_tol
 
     def __eq__(self, other):
-        if isinstance(other, SymbolicEvent):
+        if type(other) is type(self):
             if other is self:
                 return True
-            elif (self.event, self.check_if, self.event_tol) == (other.event, other.check_if, other.event_tol):
-                return AnySymbolicEvent.__eq__(self, other)
+            else:
+                return (self.name, self.event, self.check_if, self.mask, self.hide_mask, self.event_tol) == (other.name, other.event, other.check_if, other.mask, other.hide_mask, other.event_tol)
         return False
+    
+    def arg_list(self, *q: Symbol, args: Iterable[Symbol], stack: bool):
+        return dict(q=ContainerLowLevel(_vec(stack), *q), args=ContainerLowLevel(_vector, *args))
             
     def init_code(self, var_name, scalar_type, t, *q, args, stack=True):
         args = tuple(args)
@@ -121,12 +103,12 @@ class SymbolicEvent(AnySymbolicEvent):
         return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
 
 
-class SymbolicPeriodicEvent(AnySymbolicEvent):
+class SymbolicPeriodicEvent(SymbolicEvent):
 
     _cls = 'PeriodicEvent'
 
     def __init__(self, name: str, period: float, start = 0., mask: Iterable[Expr]=None, hide_mask=False):
-        AnySymbolicEvent.__init__(self, name, mask, hide_mask)
+        SymbolicEvent.__init__(self, name, None, None, mask, hide_mask, 0)
         self.period = period
         self.start = start
 
@@ -135,7 +117,7 @@ class SymbolicPeriodicEvent(AnySymbolicEvent):
             if other is self:
                 return True
             elif (self.period, self.start) == (other.period, other.start):
-                return AnySymbolicEvent.__eq__(self, other)
+                return SymbolicEvent.__eq__(self, other)
         return False
             
 
@@ -146,39 +128,6 @@ class SymbolicPeriodicEvent(AnySymbolicEvent):
         if self.mask is not None:
             mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
         return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
-
-
-class SymbolicStopEvent(AnySymbolicEvent):
-
-    _cls = 'StopEvent'
-
-    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False, kill=False):
-        AnySymbolicEvent.__init__(self, name, mask, hide_mask)
-        if not isinstance(event, Expr):
-            raise ValueError("Expr argument must be a valid symbolic expression")
-        self.event = event
-        self.check_if = check_if
-        self.kill = kill
-
-    def __eq__(self, other):
-        if isinstance(other, SymbolicStopEvent):
-            if other is self:
-                return True
-            elif (self.event, self.check_if, self.kill) == (other.event, other.check_if, other.kill):
-                return AnySymbolicEvent.__eq__(self, other)
-        return False
-
-    def init_code(self, var_name, scalar_type, t, *q, args, stack=True):
-        args = tuple(args)
-        arg_list = self.arg_list(*q, args=args, stack=stack)
-        lambda_code = ScalarLowLevelCallable(self.event, t, **arg_list).lambda_code(scalar_type)
-        checkif = "nullptr"
-        if self.check_if is not None:
-            checkif = BooleanLowLevelCallable(self.check_if, t, **arg_list).lambda_code(scalar_type)
-        mask = "nullptr"
-        if self.mask is not None:
-            mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
-        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {'true' if self.kill else 'false'});'
 
 
 
@@ -192,16 +141,16 @@ class OdeSystem:
     args: tuple[Symbol, ...]
     t: Symbol
     q: tuple[Symbol, ...]
-    events: tuple[AnySymbolicEvent, ...]
+    events: tuple[SymbolicEvent, ...]
     _int_all_func: dict[int]
     _compiled_odes: dict[tuple, LowLevelODE]
 
-    def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
+    def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
         obj = object.__new__(cls)
         return cls._process_args(obj, ode_sys, t, *q, args=args, events=events)
     
     @classmethod
-    def _process_args(cls, obj: OdeSystem, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
+    def _process_args(cls, obj: OdeSystem, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
         ode_sys = tuple(ode_sys)
         args = tuple(args)
         events = tuple(events)
@@ -260,7 +209,7 @@ class OdeSystem:
             ev_name = f'ev{i}'
             event_block += self.events[i].init_code(ev_name, scalar_type, self.t, *self.q, args=self.args, stack=stack)+'\n'
             event_array.append(f'&{ev_name}')
-        event_array = f'std::vector<AnyEvent<{scalar_type}, {_vec(stack)}<{scalar_type}>>*>' +' events = {'+', '.join(event_array)+'};'
+        event_array = f'std::vector<Event<{scalar_type}, {_vec(stack)}<{scalar_type}>>*>' +' events = {'+', '.join(event_array)+'};'
         return '\n\n'.join([event_block, event_array])
         
     def ode_generator_code(self, stack=True, scalar_type="double"):
@@ -352,7 +301,7 @@ class OdeSystem:
         return temp_module.func_ptr, temp_module.ev_ptr, temp_module.mask_ptr
 
 
-def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[AnySymbolicEvent]=()):
+def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
     n = len(ode_sys)
     ode_sys = tuple(ode_sys)
     var_odesys = []
