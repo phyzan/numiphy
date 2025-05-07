@@ -34,19 +34,21 @@ class Orbit(ODE):
         ODE.__init__(self)
         self._ode_obj = ode
 
+
     def __getattribute__(self, name):
         if name == "_ode_obj":
             return object.__getattribute__(self, name)
-        elif name in object.__getattribute__(self, "_attrs")():
-            return object.__getattribute__(self, name)
-        else:
+        try:
+            attr = object.__getattribute__(self, name)
+            if callable(attr):
+                def wrapped(*args, **kwargs):
+                    try:
+                        return attr(*args, **kwargs)
+                    except NotImplementedError:
+                        # fallback to _ode_obj's method
+                        fallback = getattr(self._ode_obj, name)
+                        return fallback(*args, **kwargs)
+                return wrapped
+            return attr
+        except NotImplementedError:
             return getattr(self._ode_obj, name)
-        
-    @classmethod
-    def _attrs(cls):
-        attrs = {}
-        for base in object.__getattribute__(cls, "__mro__"):
-            if base is ODE:
-                break
-            attrs.update(object.__getattribute__(base, "__dict__"))
-        return attrs
