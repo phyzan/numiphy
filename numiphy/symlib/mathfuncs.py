@@ -210,7 +210,7 @@ class Abs(Mathfunc):
 class Real(Mathfunc):
 
     name = 'real'
-    npfunc = np.real
+    npfunc = staticmethod(np.real)
     _priority = 32
 
     @classmethod
@@ -242,7 +242,7 @@ class Real(Mathfunc):
 class Imag(Mathfunc):
 
     name = 'imag'
-    npfunc = np.imag
+    npfunc = staticmethod(np.imag)
     _priority = 33
 
     @classmethod

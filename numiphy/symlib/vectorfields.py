@@ -56,7 +56,7 @@ class VectorField2D:
         cdot = self.flowdot(line)
         return scint.quad(cdot, *line.lims, args=args, epsabs=1e-10)[0]
     
-    def streamline(self, x0, y0, s, ds=1e-3, *args, **odekw):
+    def streamline(self, x0, y0, s, *args, **odekw):
         '''
         Let F be a vector field.
         A field line R(s) passing through a point (x0, y0) satisfies the equation
@@ -67,8 +67,8 @@ class VectorField2D:
         dR/ds = F(R) / |F(R)|
         which means dR/ds is the unit vector of the vector field at each point
         '''
-        res = LowLevelODE(lambda s, q: self.unitvec(*q, *args), 0, np.array[x0, y0], ds, **odekw).q
-        return res.transpose()
+        ode = LowLevelODE(lambda s, q: self.unitvec(*q, *args), 0, np.array([x0, y0]), **odekw)
+        return ode.integrate(s, include_first=True)
         
     def loop(self, q, r, *args):
         c = Circle(r, q)
