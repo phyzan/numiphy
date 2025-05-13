@@ -53,6 +53,14 @@ class Mathfunc(Expr):
     @classmethod
     def mathsimp(cls, arg: Expr)->Expr:
         return cls(arg, simplify=False)
+    
+    def eval(self):
+        arg = self.Arg.eval()
+        if isinstance(arg, Number):
+            return asexpr(self.eval_at(arg.value))
+        else:
+            return self.init(arg)
+        
 
 
 class sin(Mathfunc):
