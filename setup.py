@@ -17,7 +17,7 @@ class CustomInstall(install):
         package_dir = self.build_lib
         target_dir = os.path.join(package_dir, "numiphy", "odesolvers")
         odepack_name = "odepack"
-        code = f'#include <odepack/pyode.hpp>\n\nPYBIND11_MODULE({odepack_name}, m)'+'{\n\tdefine_ode_module<double, vec<double>>(m);\n}'
+        code = f'#include <odepack/pyode.hpp>\n\nPYBIND11_MODULE({odepack_name}, m)'+'{\n\tdefine_ode_module<double, -1>(m);\n}'
 
         tools_path = os.path.join(package_dir, "numiphy", "toolkit", "compile_tools.py")
         module_name = os.path.splitext(os.path.basename(tools_path))[0]  # e.g., "my_script"

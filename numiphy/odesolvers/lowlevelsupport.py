@@ -12,11 +12,7 @@ from functools import cached_property
 from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable
 
 
-_stack_vec_alias = "StackVec"
 _vector = "std::vector"
-
-def _vec(stack: bool):
-    return _stack_vec_alias if stack else "vec"
 
 
 class _LowLevelCallable(_CallableFunction):
@@ -58,10 +54,8 @@ class VectorLowLevelCallable(_VectorCallable, _LowLevelCallable):
     def core_impl(self, scalar_type):
         res: list[Expr] = self._converted_array(self.array)
         r = ", ".join([qi.lowlevel_repr(scalar_type=scalar_type) for qi in res])
-        if self.array_type == 'vec':
-            return f'{self.return_id(scalar_type)} res({len(res)}); res << {r}; return res;'
-        else:
-            return 'return {'+r+'};'
+        final = 'return {' + r + '};'
+        return f"#if (_N==-1)\n    {self.return_id(scalar_type)} res({len(res)}); res << {r}; return res;\n#else\n    {final}\n#endif"
 
 
 class SymbolicEvent:
@@ -87,20 +81,20 @@ class SymbolicEvent:
                 return (self.name, self.event, self.check_if, self.mask, self.hide_mask, self.event_tol) == (other.name, other.event, other.check_if, other.mask, other.hide_mask, other.event_tol)
         return False
     
-    def arg_list(self, *q: Symbol, args: Iterable[Symbol], stack: bool):
-        return dict(q=ContainerLowLevel(_vec(stack), *q), args=ContainerLowLevel(_vector, *args))
+    def arg_list(self, *q: Symbol, args: Iterable[Symbol]):
+        return dict(q=ContainerLowLevel("array", *q), args=ContainerLowLevel(_vector, *args))
             
-    def init_code(self, var_name, scalar_type, t, *q, args, stack=True):
+    def init_code(self, var_name, scalar_type, t, *q, args):
         args = tuple(args)
-        arg_list = self.arg_list(*q, args=args, stack=stack)
+        arg_list = self.arg_list(*q, args=args)
         lambda_code = ScalarLowLevelCallable(self.event, t, **arg_list).lambda_code(scalar_type)
         checkif = "nullptr"
         if self.check_if is not None:
             checkif = BooleanLowLevelCallable(self.check_if, t, **arg_list).lambda_code(scalar_type)
         mask = "nullptr"
         if self.mask is not None:
-            mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
-        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
+            mask = VectorLowLevelCallable("array", self.mask, t, **arg_list).lambda_code(scalar_type)
+        return f'{self._cls}<{scalar_type}, _N> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
 
 
 class SymbolicPeriodicEvent(SymbolicEvent):
@@ -121,13 +115,13 @@ class SymbolicPeriodicEvent(SymbolicEvent):
         return False
             
 
-    def init_code(self, var_name, scalar_type, t, *q, args, stack=True):
+    def init_code(self, var_name, scalar_type, t, *q, args):
         args = tuple(args)
-        arg_list = self.arg_list(*q, args=args, stack=stack)
+        arg_list = self.arg_list(*q, args=args)
         mask = "nullptr"
         if self.mask is not None:
-            mask = VectorLowLevelCallable(_vec(stack), self.mask, t, **arg_list).lambda_code(scalar_type)
-        return f'{self._cls}<{scalar_type}, {_vec(stack)}<{scalar_type}>> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
+            mask = VectorLowLevelCallable("array", self.mask, t, **arg_list).lambda_code(scalar_type)
+        return f'{self._cls}<{scalar_type}, _N> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
 
 
 
@@ -142,7 +136,7 @@ class OdeSystem:
     t: Symbol
     q: tuple[Symbol, ...]
     events: tuple[SymbolicEvent, ...]
-    _int_all_func: dict[int]
+    _int_all_func: dict[int, Callable]
     _compiled_odes: dict[tuple, LowLevelODE]
 
     def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
@@ -196,45 +190,41 @@ class OdeSystem:
     def module_name(self):
         return f'ODE_MODULE_{self.__class__._counter}'
     
-    def odefunc_code(self, scalar_type, stack=True):
-        arr_type = _stack_vec_alias if stack else "vec"
+    def odefunc_code(self, scalar_type):
         array, symbols = self.ode_sys, self.q
-        f = VectorLowLevelCallable(arr_type, array, self.t, q=ContainerLowLevel(arr_type, *symbols), args=ContainerLowLevel(_vector, *self.args))
+        f = VectorLowLevelCallable("array", array, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
         return f.code("ODE_FUNC", scalar_type)
     
-    def event_block(self, stack=True, scalar_type="double")->str:
+    def event_block(self, scalar_type="double")->str:
         event_block = ''
         event_array = []
         for i in range(len(self.events)):
             ev_name = f'ev{i}'
-            event_block += self.events[i].init_code(ev_name, scalar_type, self.t, *self.q, args=self.args, stack=stack)+'\n'
+            event_block += self.events[i].init_code(ev_name, scalar_type, self.t, *self.q, args=self.args)+'\n'
             event_array.append(f'&{ev_name}')
-        event_array = f'std::vector<Event<{scalar_type}, {_vec(stack)}<{scalar_type}>>*>' +' events = {'+', '.join(event_array)+'};'
+        event_array = f'std::vector<Event<{scalar_type}, _N>*>' +' events = {'+', '.join(event_array)+'};'
         return '\n\n'.join([event_block, event_array])
-        
-    def ode_generator_code(self, stack=True, scalar_type="double"):
+    
+    def ode_generator_code(self, scalar_type="double"):
         Tt = scalar_type
-        Ty = _vec(stack) + f"<{scalar_type}>"
-        line1 = f"PyODE<{Tt}, {Ty}> GetOde(const {Tt}& t0, py::array q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
-        line2 = f'return PyODE<{Tt}, {Ty}>(ODE_FUNC, t0, toCPP_Array<{Tt}, {Ty}>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, savedir.cast<std::string>(), save_events_only);\n'+'}'
+        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::array q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
+        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, savedir.cast<std::string>(), save_events_only);\n'+'}'
         return line1+line2
 
     def module_code(self, scalar_type = "double", stack=True):
-        def_ode_mod = stack
         header = "#include <odepack/pyode.hpp>"
-        template_alias = f'template<class T>\nusing {_stack_vec_alias} = vec<T, {self.Nsys}>;'
-        event_block = self.event_block(stack, scalar_type)
-        ode_func = self.odefunc_code(scalar_type, stack=stack)
-        ode_gen_code = self.ode_generator_code(stack=stack, scalar_type=scalar_type)
+        definitions = f'# define _N {self.Nsys if stack else -1}\n\ntemplate<class T>\nusing array = vec<T, _N>;'
+        event_block = self.event_block(scalar_type)
+        ode_func = self.odefunc_code(scalar_type)
+        ode_gen_code = self.ode_generator_code(scalar_type=scalar_type)
         r = '\n\tm.def("func_ptr", [](){return reinterpret_cast<const void*>(ODE_FUNC);});'
         r += '\n\tm.def("ev_ptr", [](){return reinterpret_cast<const void*>(&events);});'
         r += '\n\tm.def("mask_ptr", [](){void* ptr = nullptr; return ptr;});'
         y = '\n\tm.def("get_ode", GetOde);\n'
-        Ty = f"vec<{scalar_type}, {self.Nsys}>" if stack else f"vec<{scalar_type}>"
-        p = "\n\tdefine_ode_module" + f'<{scalar_type}, {Ty}>(m);'+y if def_ode_mod else ''
+        p = "\n\tdefine_ode_module" + f'<{scalar_type}, _N>(m);'+y if stack else ''
         commands = p + r
         pybind_cond = f"PYBIND11_MODULE({self.module_name}, m)"+'{'+commands+'\n}'
-        items = [header, template_alias, event_block, ode_func, ode_gen_code, pybind_cond]
+        items = [header, definitions, event_block, ode_func, ode_gen_code, pybind_cond]
         if not stack:
             items.pop(-2)
         return "\n\n".join(items)
