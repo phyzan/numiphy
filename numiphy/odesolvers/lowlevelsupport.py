@@ -138,9 +138,11 @@ class OdeSystem:
     events: tuple[SymbolicEvent, ...]
     _int_all_func: dict[int, Callable]
     _compiled_odes: dict[tuple, LowLevelODE]
+    _ptrs: list
 
     def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
         obj = object.__new__(cls)
+        obj._ptrs = None
         return cls._process_args(obj, ode_sys, t, *q, args=args, events=events)
     
     @classmethod
@@ -248,7 +250,21 @@ class OdeSystem:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack, scalar_type=scalar_type)
             tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
 
-    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->ODE:
+    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->LowLevelODE:
+        if len(args) != len(self.args):
+            raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
+
+        f, ev, _ = self.pointers()
+        return LowLevelODE(f(), t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=ev(), savedir=savedir, save_events_only=save_events_only)
+    
+    def get_variational(self, period: float, start: float, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->VariationalLowLevelODE:
+        if len(args) != len(self.args):
+            raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
+
+        f, ev, _ = self.pointers()
+        return VariationalLowLevelODE(period, start, f(), t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=ev(), savedir=savedir, save_events_only=save_events_only)
+
+    def _get_deprecated(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
         if len(args) != len(self.args):
             raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
         params = (t0, q0, rtol, atol, min_step, max_step, first_step, args, method, savedir, save_events_only)
@@ -256,7 +272,7 @@ class OdeSystem:
             self._ode_generator(no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
         return self._compiled_odes[(no_math_errno, no_math_trap, fast_math, scalar_type)](*params)
     
-    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events=-1, terminate=True, threads=-1, max_prints=0)->None:
+    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events: dict[str, int]={}, threads=-1, max_prints=0)->None:
         grouped: dict[int, list[tuple[LowLevelODE, int]]] = {}
         for i, ode in enumerate(odes):
             if ode.dim not in grouped:
@@ -265,7 +281,7 @@ class OdeSystem:
                 grouped[ode.dim].append((ode, i))
         for dim in grouped:
             ode_arr = [l[0] for l in grouped[dim]]
-            self._int_all_func[dim](ode_arr, interval, max_frames=max_frames, max_events=max_events, terminate=terminate, threads=threads, max_prints=max_prints)
+            self._int_all_func[dim](ode_arr, interval, max_frames=max_frames, max_events=max_events, threads=threads, max_prints=max_prints)
     
     def _ode_generator(self, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
         modname = self.module_name
@@ -280,15 +296,20 @@ class OdeSystem:
         self._compiled_odes[(no_math_errno, no_math_trap, fast_math, scalar_type)] = temp_module.get_ode
         return temp_module.get_ode
     
-    def pointers(self, scalar_type="double"):
+
+    def pointers(self):
+        if self._ptrs is not None:
+            return self._ptrs
+        
         modname = self.module_name
 
         with tempfile.TemporaryDirectory() as so_dir:
-            self.compile(so_dir, modname, stack=False, no_math_errno=True, no_math_trap=False, fast_math=False, scalar_type=scalar_type)
+            self.compile(so_dir, modname, stack=False, no_math_errno=True, no_math_trap=False, fast_math=False, scalar_type="double")
             temp_module = tools.import_lowlevel_module(so_dir, modname)
-
+        
         self.__class__._counter += 1
-        return temp_module.func_ptr, temp_module.ev_ptr, temp_module.mask_ptr
+        self._ptrs = [temp_module.func_ptr, temp_module.ev_ptr, temp_module.mask_ptr]
+        return self._ptrs
 
 
 def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):

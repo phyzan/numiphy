@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-def compile(cpp_path, so_dir, module_name, no_math_errno=False, no_math_trap=False, fast_math=False):
+def compile(cpp_path, so_dir, module_name, no_math_errno=True, no_math_trap=False, fast_math=False):
 
     if not os.path.exists(cpp_path):
         raise RuntimeError(f"CPP file path does not exist: {cpp_path}")
