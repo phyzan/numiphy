@@ -56,6 +56,25 @@ class VectorLowLevelCallable(_VectorCallable, _LowLevelCallable):
         r = ", ".join([qi.lowlevel_repr(scalar_type=scalar_type) for qi in res])
         final = 'return {' + r + '};'
         return f"#if (_N==-1)\n    {self.return_id(scalar_type)} res({len(res)}); res << {r}; return res;\n#else\n    {final}\n#endif"
+    
+class VectorLowLevelVoidCallable(VectorLowLevelCallable):
+
+    def return_id(self, scalar_type):
+        return 'void'
+    
+    def core_impl(self, scalar_type):
+        res: list[Expr] = self._converted_array(self.array)
+        return '\n'.join([f'result[{i}] = {res[i].lowlevel_repr(scalar_type=scalar_type)};' for i in range(len(res))])
+
+    def lambda_code(self, scalar_type):
+        return f'[]({VectorLowLevelCallable.return_id(self, scalar_type)+'& result'}, {self.argument_list(scalar_type)})' + '{' +f'{self.core_impl(scalar_type)}'+'}'
+
+    def argument_list(self, scalar_type):
+        result_reference = VectorLowLevelCallable.return_id(self, scalar_type)+'& result'
+        arglist = [self.scalar_id(scalar_type, x) for x in self.args]
+        container_list = [self.containers[name].as_argument(scalar_type, name) for name in self.containers]
+        return ', '.join([result_reference]+arglist+container_list)
+
 
 
 class SymbolicEvent:
@@ -194,7 +213,7 @@ class OdeSystem:
     
     def odefunc_code(self, scalar_type):
         array, symbols = self.ode_sys, self.q
-        f = VectorLowLevelCallable("array", array, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
+        f = VectorLowLevelVoidCallable("array", array, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
         return f.code("ODE_FUNC", scalar_type)
     
     def event_block(self, scalar_type="double")->str:

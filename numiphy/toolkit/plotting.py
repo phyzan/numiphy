@@ -384,6 +384,21 @@ class ScatterPlot(Artist):
         ax.scatter(self.xcoords, self.ycoords, **self.params)
 
 
+class ErrorPlot(Artist):
+
+    def __init__(self, **kwargs):
+
+        if 'yerr' in kwargs:
+            if kwargs['yerr'] is not None:
+                kwargs['yerr'] = [float(i) for i in kwargs['yerr']]
+        if 'xerr' in kwargs:
+            if kwargs['xerr'] is not None:
+                kwargs['xerr'] = [float(i) for i in kwargs['xerr']]
+        super().__init__(**kwargs)
+
+    def apply(self, ax):
+        ax.errorbar(self.xcoords, self.ycoords, **self.params)
+
     
 '''
 e.g.
