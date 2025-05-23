@@ -291,17 +291,6 @@ class OdeSystem:
             self._ode_generator(no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
         return self._compiled_odes[(no_math_errno, no_math_trap, fast_math, scalar_type)](*params)
     
-    def integrate_all(self, odes: Iterable[LowLevelODE], interval, *, max_frames=-1, max_events: dict[str, int]={}, threads=-1, max_prints=0)->None:
-        grouped: dict[int, list[tuple[LowLevelODE, int]]] = {}
-        for i, ode in enumerate(odes):
-            if ode.dim not in grouped:
-                grouped[ode.dim] = [(ode, i)]
-            else:
-                grouped[ode.dim].append((ode, i))
-        for dim in grouped:
-            ode_arr = [l[0] for l in grouped[dim]]
-            self._int_all_func[dim](ode_arr, interval, max_frames=max_frames, max_events=max_events, threads=threads, max_prints=max_prints)
-    
     def _ode_generator(self, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
         modname = self.module_name
 
