@@ -8,7 +8,6 @@ import os
 import tempfile
 from typing import Callable
 from .odepack import * # type: ignore
-from functools import cached_property
 from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable
 
 
@@ -155,13 +154,10 @@ class OdeSystem:
     t: Symbol
     q: tuple[Symbol, ...]
     events: tuple[SymbolicEvent, ...]
-    _int_all_func: dict[int, Callable]
-    _compiled_odes: dict[tuple, LowLevelODE]
-    _ptrs: list
+    _ptrs: tuple
 
     def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
         obj = object.__new__(cls)
-        obj._ptrs = None
         return cls._process_args(obj, ode_sys, t, *q, args=args, events=events)
     
     @classmethod
@@ -189,12 +185,11 @@ class OdeSystem:
         obj.t = t
         obj.q = q
         obj.events = events
-        obj._int_all_func = dict()
-        obj._compiled_odes = dict()
         for i in range(len(cls._cls_instances)):
             if cls._cls_instances[i] == obj:
                 return cls._cls_instances[i]
         cls._cls_instances.append(obj)
+        obj._ptrs = None
         return obj
 
     def __eq__(self, other: OdeSystem):
@@ -270,41 +265,11 @@ class OdeSystem:
             tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
 
     def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->LowLevelODE:
-        if len(args) != len(self.args):
-            raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
-
-        f, ev, _ = self.pointers()
-        return LowLevelODE(f(), t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=ev(), savedir=savedir, save_events_only=save_events_only)
+        return LowLevelODE(self.lowlevel_jacobian, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events, savedir=savedir, save_events_only=save_events_only)
     
-    def get_variational(self, period: float, start: float, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->VariationalLowLevelODE:
-        if len(args) != len(self.args):
-            raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
-
-        f, ev, _ = self.pointers()
-        return VariationalLowLevelODE(period, start, f(), t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=ev(), savedir=savedir, save_events_only=save_events_only)
-
-    def _get_deprecated(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", no_math_errno=False, fast_math=False, no_math_trap=False, scalar_type="double", savedir="", save_events_only=False)->LowLevelODE:
-        if len(args) != len(self.args):
-            raise ValueError(".get(...) requires args=() with a size equal to the size of the args iterable of symbols provided in the initialization of the OdeSystem")
-        params = (t0, q0, rtol, atol, min_step, max_step, first_step, args, method, savedir, save_events_only)
-        if (no_math_errno, no_math_trap, fast_math, scalar_type) not in self._compiled_odes:
-            self._ode_generator(no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
-        return self._compiled_odes[(no_math_errno, no_math_trap, fast_math, scalar_type)](*params)
+    def get_variational(self, period: float, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->VariationalLowLevelODE:
+        return VariationalLowLevelODE(self.lowlevel_jacobian, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events, savedir=savedir, save_events_only=save_events_only)
     
-    def _ode_generator(self, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double")->Callable[[float, np.ndarray, float, float, float, float, tuple, str, float], LowLevelODE]:
-        modname = self.module_name
-
-        with tempfile.TemporaryDirectory() as so_dir:
-            self.compile(so_dir, modname, stack=True, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math, scalar_type=scalar_type)
-            temp_module = tools.import_lowlevel_module(so_dir, modname)
-
-        self.__class__._counter += 1
-        if self.Nsys not in self._int_all_func:
-            self._int_all_func[self.Nsys] = temp_module.integrate_all
-        self._compiled_odes[(no_math_errno, no_math_trap, fast_math, scalar_type)] = temp_module.get_ode
-        return temp_module.get_ode
-    
-
     def pointers(self):
         if self._ptrs is not None:
             return self._ptrs
@@ -316,8 +281,19 @@ class OdeSystem:
             temp_module = tools.import_lowlevel_module(so_dir, modname)
         
         self.__class__._counter += 1
-        self._ptrs = [temp_module.func_ptr, temp_module.ev_ptr, temp_module.mask_ptr]
+        self._ptrs = temp_module.func_ptr(), temp_module.ev_ptr()
         return self._ptrs
+    
+    @property
+    def lowlevel_jacobian(self):
+        f, _ = self.pointers()
+        return LowLevelJacobian(f, len(self.ode_sys), len(self.args))
+    
+    @property
+    def lowlevel_events(self):
+        _, ev = self.pointers()
+        return LowLevelEventArray(ev, len(self.ode_sys), len(self.args))
+
 
 
 def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], delq: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
