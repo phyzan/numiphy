@@ -26,12 +26,6 @@ class PyContainer(Container):
         return f'{name}: {self.array_type}[{scalar_type}]'
     
 
-class ContainerLowLevel(Container):
-
-    def as_argument(self, scalar_type: str, name: str):
-        return f'const {self.array_type}<{scalar_type}>& {name}'
-        
-
 
 class _CallableFunction:
 
@@ -79,7 +73,7 @@ class _BooleanCallable(_CallableFunction):
 
 class _ScalarCallable(_CallableFunction):
 
-    def __init__(self, expr: Expr, *args: Symbol, **containers: ContainerLowLevel):
+    def __init__(self, expr: Expr, *args: Symbol, **containers: Container):
         self.expr = expr
         _CallableFunction.__init__(self, *args, **containers)
 
@@ -95,7 +89,7 @@ class _ScalarCallable(_CallableFunction):
 
 class _VectorCallable(_CallableFunction):
 
-    def __init__(self, array_type: str, array: Iterable[Expr], *args: Symbol, **containers: ContainerLowLevel):
+    def __init__(self, array_type: str, array: Iterable[Expr], *args: Symbol, **containers: Container):
         self.array_type = array_type
         self.array = array
         _CallableFunction.__init__(self, *args, **containers)

@@ -13,6 +13,12 @@ from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallab
 
 _vector = "std::vector"
 
+class ContainerLowLevel(Container):
+
+    def as_argument(self, scalar_type: str, name: str):
+        return f'const {self.array_type}<{scalar_type}>& {name}'
+        
+
 class OdeGenerator:
 
     def __init__(self, gen1, gen2):
@@ -318,6 +324,14 @@ class OdeSystem:
     def lowlevel_events(self):
         _, ev = self.pointers()
         return LowLevelEventArray(ev, len(self.ode_sys), len(self.args))
+    
+    @cached_property
+    def python_callable_jacobian(self)->Callable[[float, np.ndarray, tuple[float]], np.ndarray]:
+        f = VectorPythonCallable("numpy.ndarray", self.ode_sys, self.t, q=PyContainer("numpy.ndarray", *self.q), args=PyContainer("tuple", self.args))
+
+        glob_vars = {"numpy": np, "math": math, "cmath": cmath}
+        exec(f.code("jac", "float", "math"), glob_vars)
+        return glob_vars['jac']
 
 
 
