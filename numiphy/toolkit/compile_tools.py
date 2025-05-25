@@ -1,5 +1,8 @@
 import os
 import subprocess
+import random
+import string
+import keyword
 
 def compile(cpp_path, so_dir, module_name, no_math_errno=True, no_math_trap=False, fast_math=False):
 
@@ -17,3 +20,13 @@ def compile(cpp_path, so_dir, module_name, no_math_errno=True, no_math_trap=Fals
 
     subprocess.check_call(compile_comm, shell=True)
     print('Done')
+
+
+def random_module_name(length=8):
+    first_char = random.choice(string.ascii_letters + '_')
+    other_chars = random.choices(string.ascii_letters + string.digits + '_', k=length - 1)
+    name = first_char + ''.join(other_chars)
+
+    while keyword.iskeyword(name):
+        name = random_module_name(length)
+    return name

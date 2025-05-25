@@ -13,6 +13,17 @@ from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallab
 
 _vector = "std::vector"
 
+class OdeGenerator:
+
+    def __init__(self, gen1, gen2):
+        self._gen1 = gen1
+        self._gen2 = gen2
+
+    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->LowLevelODE:
+        return self._gen1(t0, q0, rtol, atol, min_step, max_step, first_step, args, method, savedir, save_events_only)
+
+    def get_variational(self, t0: float, q0: np.ndarray, period: float, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->VariationalLowLevelODE:
+        return self._gen2(t0, q0, period, rtol, atol, min_step, max_step, first_step, args, method, savedir, save_events_only)
 
 class _LowLevelCallable(_CallableFunction):
 
@@ -223,11 +234,13 @@ class OdeSystem:
     
     def ode_generator_code(self, scalar_type="double"):
         Tt = scalar_type
-        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::array q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
-        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, savedir.cast<std::string>(), save_events_only);\n'+'}'
-        return line1+line2
+        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::object q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
+        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, savedir.cast<std::string>(), save_events_only);\n'+'}\n\n'
+        line3 = f"PyVarODE<{Tt}, _N> GetVarOde(const {Tt}& t0, py::object q0, const {Tt}& period, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str savedir, py::bool_ save_events_only)"+'{\n\t'
+        line4 = f'return PyVarODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), period, rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, savedir.cast<std::string>(), save_events_only);\n'+'}\n\n'
+        return line1+line2+line3+line4
 
-    def module_code(self, scalar_type = "double", stack=True):
+    def module_code(self, name = "ode_module", scalar_type = "double", stack=True):
         header = "#include <odepack/pyode.hpp>"
         definitions = f'# define _N {self.Nsys if stack else -1}\n\ntemplate<class T>\nusing array = vec<T, _N>;'
         event_block = self.event_block(scalar_type)
@@ -236,10 +249,11 @@ class OdeSystem:
         r = '\n\tm.def("func_ptr", [](){return reinterpret_cast<const void*>(ODE_FUNC);});'
         r += '\n\tm.def("ev_ptr", [](){return reinterpret_cast<const void*>(&events);});'
         r += '\n\tm.def("mask_ptr", [](){void* ptr = nullptr; return ptr;});'
-        y = '\n\tm.def("get_ode", GetOde);\n'
-        p = "\n\tdefine_ode_module" + f'<{scalar_type}, _N>(m);'+y if stack else ''
+        y1 = '\n\tm.def("get_ode", GetOde);\n'
+        y2 = '\n\tm.def("get_var_ode", GetVarOde);\n'
+        p = "\n\tdefine_ode_module" + f'<{scalar_type}, _N>(m);'+y1+y2 if stack else ''
         commands = p + r
-        pybind_cond = f"PYBIND11_MODULE({self.module_name}, m)"+'{'+commands+'\n}'
+        pybind_cond = f"PYBIND11_MODULE({name}, m)"+'{'+commands+'\n}'
         items = [header, definitions, event_block, ode_func, ode_gen_code, pybind_cond]
         if not stack:
             items.pop(-2)
@@ -248,7 +262,7 @@ class OdeSystem:
     def generate_cpp_file(self, directory, module_name, stack = True, scalar_type="double"):
         if not os.path.exists(directory):
             raise RuntimeError(f'Directory "{directory}" does not exist')
-        code = self.module_code(scalar_type=scalar_type, stack=stack)
+        code = self.module_code(name=module_name, scalar_type=scalar_type, stack=stack)
         cpp_file = os.path.join(directory, f"{module_name}.cpp")
 
         with open(cpp_file, "w") as f:
@@ -256,7 +270,7 @@ class OdeSystem:
 
         return os.path.join(directory, f'{module_name}.cpp')
 
-    def compile(self, directory: str, module_name, stack=True, no_math_errno=False, no_math_trap=False, fast_math=False, scalar_type="double"):
+    def compile(self, directory: str, module_name, stack=True, no_math_errno=True, no_math_trap=False, fast_math=False, scalar_type="double"):
         if not os.path.exists(directory):
             raise RuntimeError(f"Cannot compile ode at {directory}: Path does not exist")
         
@@ -264,10 +278,21 @@ class OdeSystem:
             cpp_file = self.generate_cpp_file(temp_dir, module_name, stack, scalar_type=scalar_type)
             tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
 
-    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->LowLevelODE:
+    def compile_and_import(self, stack=True, no_math_errno=True, no_math_trap=False, fast_math=False, scalar_type="double"):
+        '''
+        The returned object's class will behave the same as LowLevelODE, but will appear as different class because it will
+        originate from a newly compiled python module.
+        '''
+        name = tools.random_module_name()
+        with tempfile.TemporaryDirectory() as compile_temp_dir:
+            self.compile(directory=compile_temp_dir, module_name=name, stack=stack, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math, scalar_type=scalar_type)
+            mod = tools.import_lowlevel_module(compile_temp_dir, name)
+        return OdeGenerator(getattr(mod, "get_ode"), getattr(mod, "get_var_ode"))
+    
+    def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->LowLevelODE:
         return LowLevelODE(self.lowlevel_jacobian, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events, savedir=savedir, save_events_only=save_events_only)
     
-    def get_variational(self, period: float, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->VariationalLowLevelODE:
+    def get_variational(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", savedir="", save_events_only=False)->VariationalLowLevelODE:
         return VariationalLowLevelODE(self.lowlevel_jacobian, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events, savedir=savedir, save_events_only=save_events_only)
     
     def pointers(self):
