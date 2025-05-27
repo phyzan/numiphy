@@ -105,7 +105,7 @@ class LowLevelEventArray:
     def __init__(self, pointer, q_size: int, args_size: int):...
 
 
-class LowLevelJacobian:
+class LowLevelFunction:
 
     def __init__(self, pointer, q_size: int, args_size: int):...
 
@@ -115,7 +115,7 @@ class LowLevelJacobian:
 class LowLevelODE:
 
     @overload
-    def __init__(self, f: LowLevelJacobian, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", events: LowLevelEventArray=None, save_dir="", save_events_only=False):...
+    def __init__(self, f: LowLevelFunction, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", events: LowLevelEventArray=None, save_dir="", save_events_only=False):...
 
     @overload
     def __init__(self, f : Callable[[float, np.ndarray, *tuple[Any, ...]], np.ndarray], t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", events: list[Event]=None, mask=None, save_dir="", save_events_only=False):...
@@ -167,7 +167,7 @@ class LowLevelODE:
 class VariationalLowLevelODE(LowLevelODE):
 
     @overload
-    def __init__(self, f: LowLevelJacobian, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", events: LowLevelEventArray=None, save_dir="", save_events_only=False):...
+    def __init__(self, f: LowLevelFunction, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", events: LowLevelEventArray=None, save_dir="", save_events_only=False):...
 
     @overload
     def __init__(self, f : Callable[[float, np.ndarray, *tuple[Any, ...]], np.ndarray], t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", events: list[Event]=None, mask=None, save_dir="", save_events_only=False):...
