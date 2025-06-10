@@ -25,11 +25,11 @@ class OdeGenerator:
         self._gen1 = gen1
         self._gen2 = gen2
 
-    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", save_dir="", save_events_only=False)->LowLevelODE:
-        return self._gen1(t0, q0, rtol, atol, min_step, max_step, first_step, args, method, save_dir, save_events_only)
+    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
+        return self._gen1(t0, q0, rtol, atol, min_step, max_step, first_step, args, method)
 
-    def get_variational(self, t0: float, q0: np.ndarray, period: float, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", save_dir="", save_events_only=False)->VariationalLowLevelODE:
-        return self._gen2(t0, q0, period, rtol, atol, min_step, max_step, first_step, args, method, save_dir, save_events_only)
+    def get_variational(self, t0: float, q0: np.ndarray, period: float, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->VariationalLowLevelODE:
+        return self._gen2(t0, q0, period, rtol, atol, min_step, max_step, first_step, args, method)
 
 class _LowLevelCallable(_CallableFunction):
 
@@ -240,10 +240,10 @@ class OdeSystem:
     
     def ode_generator_code(self, scalar_type="double"):
         Tt = scalar_type
-        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::object q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str save_dir, py::bool_ save_events_only)"+'{\n\t'
-        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, save_dir.cast<std::string>(), save_events_only);\n'+'}\n\n'
-        line3 = f"PyVarODE<{Tt}, _N> GetVarOde(const {Tt}& t0, py::object q0, const {Tt}& period, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method, py::str save_dir, py::bool_ save_events_only)"+'{\n\t'
-        line4 = f'return PyVarODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), period, rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), method.cast<std::string>(), events, nullptr, save_dir.cast<std::string>(), save_events_only);\n'+'}\n\n'
+        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::object q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
+        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
+        line3 = f"PyVarODE<{Tt}, _N> GetVarOde(const {Tt}& t0, py::object q0, const {Tt}& period, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
+        line4 = f'return PyVarODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), period, rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
         return line1+line2+line3+line4
 
     def module_code(self, name = "ode_module", scalar_type = "double", stack=True):
@@ -295,11 +295,11 @@ class OdeSystem:
             mod = tools.import_lowlevel_module(compile_temp_dir, name)
         return OdeGenerator(getattr(mod, "get_ode"), getattr(mod, "get_var_ode"))
     
-    def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", save_dir="", save_events_only=False)->LowLevelODE:
-        return LowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events, save_dir=save_dir, save_events_only=save_events_only)
+    def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
+        return LowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
     
-    def get_variational(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45", save_dir="", save_events_only=False)->VariationalLowLevelODE:
-        return VariationalLowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events, save_dir=save_dir, save_events_only=save_events_only)
+    def get_variational(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->VariationalLowLevelODE:
+        return VariationalLowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
     
     def pointers(self):
         if self._ptrs is not None:
