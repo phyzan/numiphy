@@ -136,7 +136,7 @@ class SymbolicPeriodicEvent(SymbolicEvent):
 
     _cls = 'PeriodicEvent'
 
-    def __init__(self, name: str, period: float, start = float('inf'), mask: Iterable[Expr]=None, hide_mask=False):
+    def __init__(self, name: str, period: float, start = None, mask: Iterable[Expr]=None, hide_mask=False):
         SymbolicEvent.__init__(self, name, None, None, mask, hide_mask, 0)
         self.period = period
         self.start = start
@@ -156,7 +156,10 @@ class SymbolicPeriodicEvent(SymbolicEvent):
         mask = "nullptr"
         if self.mask is not None:
             mask = VectorLowLevelCallable("array", self.mask, t, **arg_list).lambda_code(scalar_type)
-        return f'{self._cls}<{scalar_type}, _N> {var_name}("{self.name}", {self.period}, {self.start if self.start != float('inf') else f'inf<{scalar_type}>()'}, {mask}, {'true' if self.hide_mask else 'false'});'
+        if self.start is None:
+            return f'{self._cls}<{scalar_type}, _N> {var_name}("{self.name}", {self.period}, {mask}, {'true' if self.hide_mask else 'false'});'
+        else:
+            return f'{self._cls}<{scalar_type}, _N> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
 
 
 
@@ -273,7 +276,7 @@ class OdeSystem:
 
         with open(cpp_file, "w") as f:
             f.write(code)
-
+        
         return os.path.join(directory, f'{module_name}.cpp')
 
     def compile(self, directory: str, module_name, stack=True, no_math_errno=True, no_math_trap=False, fast_math=False, scalar_type="double"):
