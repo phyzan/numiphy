@@ -337,8 +337,8 @@ class OdeSystem:
         f = VectorPythonCallable("numpy.ndarray", self.ode_sys, self.t, q=PyContainer("numpy.ndarray", *self.q), args=PyContainer("tuple", self.args))
 
         glob_vars = {"numpy": np, "math": math, "cmath": cmath}
-        exec(f.code("jac", "float", "math"), glob_vars)
-        return glob_vars['jac']
+        exec(f.code("ode_rhs", "float", "math"), glob_vars)
+        return glob_vars['ode_rhs']
 
 
 
