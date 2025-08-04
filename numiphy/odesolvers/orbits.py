@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 from ..toolkit import LinePlot
 import matplotlib.pyplot as plt
@@ -128,17 +130,17 @@ class HamiltonianVariationalOrbit2D(CartesianVariationalOrbit2D):
 
 class HamiltonianSystem2D(OdeSystem):
 
-    def __new__(cls, V: Expr, t: Symbol, x, y, px, py, args = (), events=()):
+    def __new__(cls, V: Expr, t: Symbol, x, y, px, py, args = (), events=())->HamiltonianSystem2D:
         q = [x, y, px, py]
         f = [px, py] + [-V.diff(x), -V.diff(y)]
         obj = object.__new__(cls)
         return cls._process_args(obj, f, t, *q, args=args, events=events)
     
 
-    def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
+    def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45"):
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return HamiltonianOrbit2D(self.lowlevel_odefunc, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return HamiltonianOrbit2D(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
     
 
 
@@ -163,4 +165,4 @@ class HamiltonianVariationalSystem2D(HamiltonianSystem2D):
     def get_variational(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->VariationalLowLevelODE:
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return HamiltonianVariationalOrbit2D(self.lowlevel_odefunc, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return HamiltonianVariationalOrbit2D(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)

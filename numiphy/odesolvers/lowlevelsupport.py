@@ -8,7 +8,7 @@ import os
 import tempfile
 from typing import Callable
 from .odepack import * # type: ignore
-from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable
+from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _VectorCallable, _TensorCallable
 
 
 _vector = "std::vector"
@@ -91,6 +91,39 @@ class VectorLowLevelVoidCallable(VectorLowLevelCallable):
         container_list = [self.containers[name].as_argument(scalar_type, name) for name in self.containers]
         return ', '.join([result_reference]+arglist+container_list)
 
+
+class JacobianLowLevel(_TensorCallable, _LowLevelCallable):
+
+    def __init__(self, matrix: list[list[Expr]], *args: Symbol, **containers: Container):
+        n = len(matrix)
+        mat = []
+        for i in range(n):
+            if len(matrix[i]) != n:
+                raise ValueError("matrix shape must be square")
+            mat += matrix[i]
+        self.matrix = [[m_ij for m_ij in m_i] for m_i in matrix] #just a full copy of the matrix
+        _TensorCallable.__init__(self, "jacobian", mat, (n, n), *args, **containers)
+
+    def return_id(self, scalar_type):
+        return "void"
+    
+    def core_impl(self, scalar_type):
+        res: list[Expr] = self._converted_array(self.array)
+        to_join = []
+        n = self.shape[0]
+        for i in range(n):
+            for j in range(n):
+                to_join.append(f'result({i}, {j}) = {res[i*n+j].lowlevel_repr(scalar_type=scalar_type)};')
+        return '\n'.join(to_join)
+    
+    def lambda_code(self, scalar_type):
+        return f'[]({f'{self.array_type}<{scalar_type}>& result'}, {self.argument_list(scalar_type)})' + '{' +f'{self.core_impl(scalar_type)}'+'}'
+
+    def argument_list(self, scalar_type):
+        result_reference = f'{self.array_type}<{scalar_type}>& result'
+        arglist = [self.scalar_id(scalar_type, x) for x in self.args]
+        container_list = [self.containers[name].as_argument(scalar_type, name) for name in self.containers]
+        return ', '.join([result_reference]+arglist+container_list)
 
 
 class SymbolicEvent:
@@ -231,6 +264,15 @@ class OdeSystem:
         f = VectorLowLevelVoidCallable("array", array, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
         return f.code("ODE_FUNC", scalar_type)
     
+    def jacobian_code(self, scalar_type):
+        array, symbols = self.ode_sys, self.q
+        matrix = self.Nsys*[self.Nsys*[None]]
+        for i in range(self.Nsys):
+            for j in range(self.Nsys):
+                matrix[i][j] = array[i].diff(symbols[j])
+        f = JacobianLowLevel(matrix, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
+        return f.code("JAC_FUNC", scalar_type)
+    
     def event_block(self, scalar_type="double")->str:
         event_block = ''
         event_array = []
@@ -243,19 +285,21 @@ class OdeSystem:
     
     def ode_generator_code(self, scalar_type="double"):
         Tt = scalar_type
-        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::object q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
-        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
+        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::iterable q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
+        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, JAC_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
         line3 = f"PyVarODE<{Tt}, _N> GetVarOde(const {Tt}& t0, py::object q0, const {Tt}& period, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
-        line4 = f'return PyVarODE<{Tt}, _N>(ODE_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), period, rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
+        line4 = f'return PyVarODE<{Tt}, _N>(ODE_FUNC, JAC_FUNC, t0, toCPP_Array<{Tt}, array<{scalar_type}>>(q0), period, rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, {_vector}<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
         return line1+line2+line3+line4
 
     def module_code(self, name = "ode_module", scalar_type = "double", stack=True):
         header = "#include <odepack/pyode.hpp>"
-        definitions = f'# define _N {self.Nsys if stack else -1}\n\ntemplate<class T>\nusing array = vec<T, _N>;'
+        definitions = f'# define _N {self.Nsys if stack else -1}\n\ntemplate<class T>\nusing array = vec<T, _N>;\n\ntemplate<class T>\nusing jacobian = JacMat<T, _N>;\n'
         event_block = self.event_block(scalar_type)
         ode_func = self.odefunc_code(scalar_type)
+        jac_func = self.jacobian_code(scalar_type)
         ode_gen_code = self.ode_generator_code(scalar_type=scalar_type)
         r = '\n\tm.def("func_ptr", [](){return reinterpret_cast<const void*>(ODE_FUNC);});'
+        r += '\n\tm.def("jac_ptr", [](){return reinterpret_cast<const void*>(JAC_FUNC);});'
         r += '\n\tm.def("ev_ptr", [](){return reinterpret_cast<const void*>(&events);});'
         r += '\n\tm.def("mask_ptr", [](){void* ptr = nullptr; return ptr;});'
         y1 = '\n\tm.def("get_ode", GetOde);\n'
@@ -263,7 +307,7 @@ class OdeSystem:
         p = "\n\tdefine_ode_module" + f'<{scalar_type}, _N>(m);'+y1+y2 if stack else ''
         commands = p + r
         pybind_cond = f"PYBIND11_MODULE({name}, m)"+'{'+commands+'\n}'
-        items = [header, definitions, event_block, ode_func, ode_gen_code, pybind_cond]
+        items = [header, definitions, event_block, ode_func, jac_func, ode_gen_code, pybind_cond]
         if not stack:
             items.pop(-2)
         return "\n\n".join(items)
@@ -301,12 +345,12 @@ class OdeSystem:
     def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return LowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return LowLevelODE(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
     
     def get_variational(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->VariationalLowLevelODE:
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return VariationalLowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return VariationalLowLevelODE(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
     
     def pointers(self):
         if self._ptrs is not None:
@@ -319,18 +363,20 @@ class OdeSystem:
             temp_module = tools.import_lowlevel_module(so_dir, modname)
         
         self.__class__._counter += 1
-        self._ptrs = temp_module.func_ptr(), temp_module.ev_ptr()
+        self._ptrs = temp_module.func_ptr(), temp_module.jac_ptr(), temp_module.ev_ptr()
         return self._ptrs
     
     @property
     def lowlevel_odefunc(self):
-        f, _ = self.pointers()
-        return LowLevelFunction(f, len(self.ode_sys), len(self.args))
+        return LowLevelFunction(self.pointers()[0], len(self.ode_sys), len(self.args))
+    
+    @property
+    def lowlevel_jac(self):
+        return LowLevelJacobian(self.pointers()[1], len(self.ode_sys), len(self.args))
     
     @property
     def lowlevel_events(self):
-        _, ev = self.pointers()
-        return LowLevelEventArray(ev, len(self.ode_sys), len(self.args))
+        return LowLevelEventArray(self.pointers()[2], len(self.ode_sys), len(self.args))
     
     @cached_property
     def odefunc(self)->Callable[[float, np.ndarray, tuple[float]], np.ndarray]:

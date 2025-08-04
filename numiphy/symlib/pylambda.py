@@ -109,6 +109,16 @@ class _VectorCallable(_CallableFunction):
             else:
                 new.append(self._converted_array(f))
         return new
+    
+
+class _TensorCallable(_VectorCallable):
+
+    def __init__(self, array_type: str, array: Iterable[Expr], shape: Iterable[int], *args: Symbol, **containers: Container):
+        if np.prod(shape) != len(array):
+            raise ValueError("Incompatible sizes")
+        _VectorCallable.__init__(self, array_type, array, *args, **containers)
+        self.shape = tuple(shape)
+
 
 
 class _PythonCallable(_CallableFunction):
