@@ -24,7 +24,6 @@ class PyContainer(Container):
 
     def as_argument(self, scalar_type: str, name: str):
         return f'{name}: {self.array_type}[{scalar_type}]'
-    
 
 
 class _CallableFunction:
@@ -174,7 +173,10 @@ def _multidim_lambda_list(arg, lib:str):
 
 def lambdify(*expr: Expr, symbols: list[Symbol], lib='math'):
     if len(expr) == 1:
-        code = ScalarPythonCallable(*expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
+        if not hasattr(expr[0], "__iter__"):
+            code = ScalarPythonCallable(*expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
+        else:
+            code = VectorPythonCallable("numpy.ndarray", expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
     else:
         code = VectorPythonCallable("numpy.ndarray", expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
     glob_vars = {"numpy": np, "math": math, "cmath": cmath}

@@ -259,18 +259,22 @@ class OdeSystem:
     def module_name(self):
         return f'ODE_MODULE_{self.__class__._counter}'
     
+    @cached_property
+    def jacmat(self):
+        array, symbols = self.ode_sys, self.q
+        matrix = self.Nsys*[self.Nsys*[None]]
+        for i in range(self.Nsys):
+            for j in range(self.Nsys):
+                matrix[i][j] = array[i].diff(symbols[j])
+        return matrix
+    
     def odefunc_code(self, scalar_type):
         array, symbols = self.ode_sys, self.q
         f = VectorLowLevelVoidCallable("array", array, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
         return f.code("ODE_FUNC", scalar_type)
     
     def jacobian_code(self, scalar_type):
-        array, symbols = self.ode_sys, self.q
-        matrix = self.Nsys*[self.Nsys*[None]]
-        for i in range(self.Nsys):
-            for j in range(self.Nsys):
-                matrix[i][j] = array[i].diff(symbols[j])
-        f = JacobianLowLevel(matrix, self.t, q=ContainerLowLevel("array", *symbols), args=ContainerLowLevel(_vector, *self.args))
+        f = JacobianLowLevel(self.jacmat, self.t, q=ContainerLowLevel("array", *self.q), args=ContainerLowLevel(_vector, *self.args))
         return f.code("JAC_FUNC", scalar_type)
     
     def event_block(self, scalar_type="double")->str:
@@ -366,25 +370,39 @@ class OdeSystem:
         self._ptrs = temp_module.func_ptr(), temp_module.jac_ptr(), temp_module.ev_ptr()
         return self._ptrs
     
-    @property
+    @cached_property
     def lowlevel_odefunc(self):
         return LowLevelFunction(self.pointers()[0], len(self.ode_sys), len(self.args))
     
-    @property
+    @cached_property
     def lowlevel_jac(self):
         return LowLevelJacobian(self.pointers()[1], len(self.ode_sys), len(self.args))
     
-    @property
+    @cached_property
     def lowlevel_events(self):
         return LowLevelEventArray(self.pointers()[2], len(self.ode_sys), len(self.args))
     
     @cached_property
-    def odefunc(self)->Callable[[float, np.ndarray, tuple[float]], np.ndarray]:
-        f = VectorPythonCallable("numpy.ndarray", self.ode_sys, self.t, q=PyContainer("numpy.ndarray", *self.q), args=PyContainer("tuple", self.args))
+    def _odefunc(self):
+        f = VectorPythonCallable("numpy.ndarray", self.ode_sys, self.t, q=PyContainer("numpy.ndarray", *self.q), args=PyContainer("tuple", *self.args))
 
         glob_vars = {"numpy": np, "math": math, "cmath": cmath}
         exec(f.code("ode_rhs", "float", "math"), glob_vars)
-        return glob_vars['ode_rhs']
+        func = glob_vars['ode_rhs']
+        return lambda t, q, *args: func(t, q, args)
+    
+    @cached_property
+    def _jac(self):
+        f = VectorLambdaExpr(self.jacmat, self.t, *self.q, *self.args)
+        func = f._callable
+        return lambda t, q, *args: func(t, *q, *args)
+    
+    def odefunc(self, t: float, q: np.ndarray, *args: float)->np.ndarray:
+        return self._odefunc(t, q, *args)
+    
+    def jac(self, t: float, q: np.ndarray, *args: float)->np.ndarray:
+        return self._jac(t, q, *args)
+
 
 
 
