@@ -262,7 +262,7 @@ class OdeSystem:
     @cached_property
     def jacmat(self):
         array, symbols = self.ode_sys, self.q
-        matrix = self.Nsys*[self.Nsys*[None]]
+        matrix = [[None for i in range(self.Nsys)] for j in range(self.Nsys)]
         for i in range(self.Nsys):
             for j in range(self.Nsys):
                 matrix[i][j] = array[i].diff(symbols[j])
