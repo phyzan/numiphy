@@ -6,23 +6,9 @@ from ..symlib.boolean import Boolean
 from ..toolkit import tools
 import os
 import tempfile
-from typing import Callable
 from .odepack import * # type: ignore
 from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _TensorCallable
 
-
-
-class OdeGenerator:
-
-    def __init__(self, gen1, gen2):
-        self._gen1 = gen1
-        self._gen2 = gen2
-
-    def get(self, t0: float, q0: np.ndarray, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
-        return self._gen1(t0, q0, rtol, atol, min_step, max_step, first_step, args, method)
-
-    def get_variational(self, t0: float, q0: np.ndarray, period: float, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->VariationalLowLevelODE:
-        return self._gen2(t0, q0, period, rtol, atol, min_step, max_step, first_step, args, method)
 
 class _LowLevelCallable(_CallableFunction):
 
@@ -112,7 +98,7 @@ class SymbolicEvent:
         mask = "nullptr"
         if self.mask is not None:
             mask = TensorLowLevelCallable(self.mask, t, q=q, args=args).lambda_code()
-        return f'{self._cls}<double, _N> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
+        return f'{self._cls}<double, -1> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
 
 
 class SymbolicPeriodicEvent(SymbolicEvent):
@@ -139,9 +125,9 @@ class SymbolicPeriodicEvent(SymbolicEvent):
         if self.mask is not None:
             mask = TensorLowLevelCallable(self.mask, t=t, args=args).lambda_code()
         if self.start is None:
-            return f'{self._cls}<double, _N> {var_name}("{self.name}", {self.period}, {mask}, {'true' if self.hide_mask else 'false'});'
+            return f'{self._cls}<double, -1> {var_name}("{self.name}", {self.period}, {mask}, {'true' if self.hide_mask else 'false'});'
         else:
-            return f'{self._cls}<double, _N> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
+            return f'{self._cls}<double, -1> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
 
 
 
@@ -232,66 +218,39 @@ class OdeSystem:
             ev_name = f'ev{i}'
             event_block += self.events[i].init_code(ev_name, self.t, *self.q, args=self.args)+'\n'
             event_array.append(f'&{ev_name}')
-        event_array = f'std::vector<Event<double, _N>*>' +' events = {'+', '.join(event_array)+'};'
+        event_array = f'std::vector<Event<double, -1>*>' +' events = {'+', '.join(event_array)+'};'
         return '\n\n'.join([event_block, event_array])
-    
-    def ode_generator_code(self):
-        Tt = "double"
-        line1 = f"PyODE<{Tt}, _N> GetOde(const {Tt}& t0, py::iterable q0, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
-        line2 = f'return PyODE<{Tt}, _N>(ODE_FUNC, JAC_FUNC, t0, toCPP_Array<{Tt}, array<{Tt}>>(q0), rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, std::vector<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
-        line3 = f"PyVarODE<{Tt}, _N> GetVarOde(const {Tt}& t0, py::object q0, const {Tt}& period, const {Tt}& rtol, const {Tt}& atol, const {Tt}& min_step, const {Tt}& max_step, const {Tt}& first_step, py::tuple args, py::str method)"+'{\n\t'
-        line4 = f'return PyVarODE<{Tt}, _N>(ODE_FUNC, JAC_FUNC, t0, toCPP_Array<{Tt}, array<{Tt}>>(q0), period, rtol, atol, min_step, max_step, first_step, toCPP_Array<{Tt}, std::vector<{Tt}>>(args), events, method.cast<std::string>());\n'+'}\n\n'
-        return line1+line2+line3+line4
 
-    def module_code(self, name = "ode_module", stack=True):
+    def module_code(self, name = "ode_module"):
         header = "#include <odepack/pyode.hpp>"
-        definitions = f'# define _N {self.Nsys if stack else -1}'
         event_block = self.event_block()
         ode_func = self.odefunc_code()
         jac_func = self.jacobian_code()
-        ode_gen_code = self.ode_generator_code()
         r = '\n\tm.def("func_ptr", [](){return reinterpret_cast<const void*>(ODE_FUNC);});'
         r += '\n\tm.def("jac_ptr", [](){return reinterpret_cast<const void*>(JAC_FUNC);});'
         r += '\n\tm.def("ev_ptr", [](){return reinterpret_cast<const void*>(&events);});'
         r += '\n\tm.def("mask_ptr", [](){void* ptr = nullptr; return ptr;});'
-        y1 = '\n\tm.def("get_ode", GetOde);\n'
-        y2 = '\n\tm.def("get_var_ode", GetVarOde);\n'
-        p = "\n\tdefine_ode_module" + f'<double, _N>(m);'+y1+y2 if stack else ''
-        commands = p + r
-        pybind_cond = f"PYBIND11_MODULE({name}, m)"+'{'+commands+'\n}'
-        items = [header, definitions, event_block, ode_func, jac_func, ode_gen_code, pybind_cond]
-        if not stack:
-            items.pop(-2)
+        pybind_cond = f"PYBIND11_MODULE({name}, m)"+'{'+r+'\n}'
+        items = [header, event_block, ode_func, jac_func, pybind_cond]
         return "\n\n".join(items)
 
-    def generate_cpp_file(self, directory, module_name, stack = True):
+    def generate_cpp_file(self, directory, module_name):
         if not os.path.exists(directory):
             raise RuntimeError(f'Directory "{directory}" does not exist')
-        code = self.module_code(name=module_name, stack=stack)
+        code = self.module_code(name=module_name)
         cpp_file = os.path.join(directory, f"{module_name}.cpp")
         with open(cpp_file, "w") as f:
             f.write(code)
         
         return os.path.join(directory, f'{module_name}.cpp')
 
-    def compile(self, directory: str, module_name, stack=True, no_math_errno=True, no_math_trap=False, fast_math=False):
+    def compile(self, directory: str, module_name: str):
         if not os.path.exists(directory):
             raise RuntimeError(f"Cannot compile ode at {directory}: Path does not exist")
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            cpp_file = self.generate_cpp_file(temp_dir, module_name, stack)
-            tools.compile(cpp_file, directory, module_name, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
-
-    def compile_and_import(self, stack=True, no_math_errno=True, no_math_trap=False, fast_math=False):
-        '''
-        The returned object's class will behave the same as LowLevelODE, but will appear as different class because it will
-        originate from a newly compiled python module.
-        '''
-        name = tools.random_module_name()
-        with tempfile.TemporaryDirectory() as compile_temp_dir:
-            self.compile(directory=compile_temp_dir, module_name=name, stack=stack, no_math_errno=no_math_errno, no_math_trap=no_math_trap, fast_math=fast_math)
-            mod = tools.import_lowlevel_module(compile_temp_dir, name)
-        return OdeGenerator(getattr(mod, "get_ode"), getattr(mod, "get_var_ode"))
+            cpp_file = self.generate_cpp_file(temp_dir, module_name)
+            tools.compile(cpp_file, directory, module_name)
     
     def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
         if len(q0) != self.Nsys:
@@ -310,7 +269,7 @@ class OdeSystem:
         modname = self.module_name
 
         with tempfile.TemporaryDirectory() as so_dir:
-            self.compile(so_dir, modname, stack=False, no_math_errno=True, no_math_trap=False, fast_math=False)
+            self.compile(so_dir, modname)
             temp_module = tools.import_lowlevel_module(so_dir, modname)
         
         self.__class__._counter += 1
