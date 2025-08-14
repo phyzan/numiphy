@@ -193,8 +193,8 @@ class Line(GeomObject):
         if _var is None:
             raise ValueError("At least one expression needs to contain exactly one variable")
         
-        _x_callable = [xi.lambdify([_var], lib='numpy') for xi in x]
-        _xdot_callable = [xi.diff(_var).lambdify([_var], lib='numpy') for xi in x]
+        _x_callable = [xi.lambdify(_var, lib='numpy') for xi in x]
+        _xdot_callable = [xi.diff(_var).lambdify(_var, lib='numpy') for xi in x]
         self.Args = (x.copy(), lims, _var, _x_callable, _xdot_callable)
 
     @property

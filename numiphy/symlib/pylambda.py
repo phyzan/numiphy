@@ -2,168 +2,129 @@ from .symcore import *
 import numpy as np
 import math, cmath
 from .boolean import Boolean
-from typing import Iterable
-
-
-class Container:
-
-    def __init__(self, array_type: str, *args: Symbol):
-        self.array_type = array_type
-        self.args = args
-    
-    def as_argument(self, scalar_type: str, name: str)->str:...
-    
-    def map(self, array_name: str)->dict[Symbol, Symbol]:
-        return {self.args[i]: Symbol(f'{array_name}[{i}]') for i in range(len(self.args))}
-    
-    def converted(self, expr: Expr, array_name: str):
-        return expr.varsub(self.map(array_name))
-    
-
-class PyContainer(Container):
-
-    def as_argument(self, scalar_type: str, name: str):
-        return f'{name}: {self.array_type}[{scalar_type}]'
+from typing import Iterable, Callable
 
 
 class _CallableFunction:
 
-    def __init__(self, *args: Symbol, **containers: Container):
-        self.args = args
-        self.containers = containers
+    def __init__(self, result: Expr|Iterable[Expr], *args: Symbol, **kwargs: Symbol|Iterable[Symbol]):
+        '''
+        must check correct input types, and that all symbols in input are different
+        '''
+        self._res: Expr|list[Expr]
+        if hasattr(result, '__iter__'):
+            self._res = list(result)
+        else:
+            self._res = result
+        self._map = {arg: arg for arg in args}
+        self._is_array = {arg.name: False for arg in args}
+        self._arg_symbols = list(args)
+        for name, obj in kwargs.items():
+            x = Symbol(name)
+            self._arg_symbols.append(x)
+            if isinstance(obj, Symbol):
+                self._map.update({obj: x})
+                self._is_array.update({x.name: False})
+            else:
+                for i, symbol in enumerate(obj):
+                    self._map.update({symbol: Symbol(f'{name}[{i}]')})
+                self._is_array.update({x.name: True})
+        
+        self._arg_symbols = tuple(self._arg_symbols)
 
-    def argument_list(self, scalar_type):
-        arglist = [self.scalar_id(scalar_type, x) for x in self.args]
-        container_list = [self.containers[name].as_argument(scalar_type, name) for name in self.containers]
-        return ', '.join(arglist+container_list)
+    def argument_list(self):
+        arglist = [self.scalar_id(x.name) for x in self._arg_symbols]
+        return ', '.join(arglist)
     
-    def scalar_id(self, scalar_type: str, scalar_name: str)->str:...
+    def scalar_id(self, scalar_name: str)->str:...
 
     def _code(self, name: str, return_type: str, arg_list: str, code_impl: str)->str:...
 
-    def code(self, name: str, scalar_type: str, *args, **kwargs)->str:...
-
-    def lambda_code(self, scalar_type: str, *args, **kwargs)->str:...
-
-    def return_id(self, scalar_type: str)->str:...
-
-    def core_impl(self, *args, **kwargs)->str:...
+    def return_id(self)->str:...
 
 
 class _BooleanCallable(_CallableFunction):
 
-    expr: Boolean
+    def __init__(self, expr: Boolean, *args: Symbol, **kwargs: Symbol|Iterable[Symbol]):
+        _CallableFunction.__init__(self, expr, *args, **kwargs)
 
-    def __init__(self, expr: Boolean, *args: Symbol, **containers: PyContainer):
-        self.expr = expr
-        _CallableFunction.__init__(self, *args, **containers)
-
-    def _mapped_boolean(self)->Boolean:
-        f = self.expr
-        for name in self.containers:
-            array = self.containers[name]
-            _map = array.map(name)
-            f = f.varsub(_map)
-        return f
+    @property
+    def expr(self)->Boolean:
+        return self._res
     
-    def return_id(self, scalar_type: str):
+    def return_id(self):
         return "bool"
 
 
 class _ScalarCallable(_CallableFunction):
 
-    def __init__(self, expr: Expr, *args: Symbol, **containers: Container):
+    def __init__(self, expr: Expr, *args: Symbol, **kwargs: Symbol|Iterable[Symbol]):
         self.expr = expr
-        _CallableFunction.__init__(self, *args, **containers)
-
-    def _mapped_expr(self)->Expr:
-        f = self.expr
-        for name in self.containers:
-            f = self.containers[name].converted(f, name)
-        return f
-
-    def return_id(self, scalar_type: str):
-        return scalar_type
+        _CallableFunction.__init__(self, expr, *args, **kwargs)
 
 
-class _VectorCallable(_CallableFunction):
+class _TensorCallable(_CallableFunction):
 
-    def __init__(self, array_type: str, array: Iterable[Expr], *args: Symbol, **containers: Container):
-        self.array_type = array_type
-        self.array = array
-        _CallableFunction.__init__(self, *args, **containers)
-
-    def _convert(self, f: Expr)->Expr:
-        g = f
-        for name in self.containers:
-            arg_array = self.containers[name]
-            g = arg_array.converted(g, name)
-        return g
+    def __init__(self, array: Iterable, *args: Symbol, **kwargs: Symbol|Iterable[Symbol]):
+        arr = np.array(array, dtype=object)
+        self.shape = arr.shape
+        _CallableFunction.__init__(self, arr.flatten().tolist(), *args, **kwargs)
     
-    def _converted_array(self, array: list)->list:
-        new = []
-        for f in array:
-            if isinstance(f, Expr):
-                new.append(self._convert(f))
-            else:
-                new.append(self._converted_array(f))
-        return new
+    @property
+    def array(self)->list[Expr]:
+        return self._res
     
-
-class _TensorCallable(_VectorCallable):
-
-    def __init__(self, array_type: str, array: Iterable[Expr], shape: Iterable[int], *args: Symbol, **containers: Container):
-        if np.prod(shape) != len(array):
-            raise ValueError("Incompatible sizes")
-        _VectorCallable.__init__(self, array_type, array, *args, **containers)
-        self.shape = tuple(shape)
-
+    @property
+    def new_array(self)->list:
+        return np.array([arg.varsub(self._map) for arg in self.array], dtype=object).reshape(self.shape).tolist()
 
 
 class _PythonCallable(_CallableFunction):
 
-    def scalar_id(self, scalar_type, scalar_name):
-        return f'{scalar_name}: {scalar_type}'
+    def scalar_id(self, scalar_name):
+        return f'{scalar_name}'
+    
+    def return_id(self):
+        return 'float'
     
     def _code(self, name, return_type, arg_list, code_impl):
         return f"def {name}({arg_list})->{return_type}:\n\t{code_impl}"
     
-    def code(self, name: str, scalar_type: str, lib: str):
-        return self._code(name, self.return_id(scalar_type), self.argument_list(scalar_type), self.core_impl(lib=lib))
+    def code(self, name: str, lib: str):
+        return self._code(name, self.return_id(), self.argument_list(), self.core_impl(lib))
     
-    def lambda_code(self, scalar_type, lib: str):
-        return f'lambda {self.argument_list(scalar_type)}: {self.core_impl(lib=lib)}'
+    def lambda_code(self, lib: str):
+        return f'lambda {self.argument_list()}: {self.core_impl(lib)}'
     
     def core_impl(self, lib: str)->str:...
     
 
-
 class BooleanPythonCallable(_BooleanCallable, _PythonCallable):
 
     def core_impl(self, lib: str):
-        res = self._mapped_boolean().repr(lib=lib)
+        res = self.expr.varsub(self._map).repr(lib=lib)
         return f"return {res}"
 
 
 class ScalarPythonCallable(_ScalarCallable, _PythonCallable):
 
     def core_impl(self, lib: str):
-        res = self._mapped_expr().repr(lib=lib)
+        res = self.expr.varsub(self._map).repr(lib=lib)
         return f"return {res}"
 
 
-class VectorPythonCallable(_VectorCallable, _PythonCallable):
+class TensorPythonCallable(_TensorCallable, _PythonCallable):
 
-    def return_id(self, scalar_type):
-        return f"{self.array_type}[{scalar_type}]"
+    def return_id(self):
+        return f"numpy.ndarray[float]"
 
-    def core_impl(self, lib):
-        return f"return numpy.array({_multidim_lambda_list(self._converted_array(self.array), lib=lib)})"
-
-
+    def core_impl(self, lib: str):
+        return f"return numpy.array({_multidim_lambda_list(self.new_array, lib=lib)})"
 
 
-def _multidim_lambda_list(arg, lib:str):
+
+
+def _multidim_lambda_list(arg, lib: str):
     if hasattr(arg, '__iter__'):
         return f"[{', '.join([_multidim_lambda_list(f, lib) for f in arg])}]"
     elif isinstance(arg, Expr):
@@ -171,14 +132,16 @@ def _multidim_lambda_list(arg, lib:str):
     else:
         raise ValueError(f"Item of type '{arg.__class__}' not supported for lambdifying")
 
-def lambdify(*expr: Expr, symbols: list[Symbol], lib='math'):
-    if len(expr) == 1:
-        if not hasattr(expr[0], "__iter__"):
-            code = ScalarPythonCallable(*expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
-        else:
-            code = VectorPythonCallable("numpy.ndarray", expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
+def lambdify(arg, lib: str, *args: Symbol, **kwargs: Iterable[Symbol])->Callable:
+
+    if hasattr(arg, '__iter__'):
+        r = TensorPythonCallable(arg, *args, **kwargs)
+    elif isinstance(arg, Boolean):
+        r = BooleanPythonCallable(arg, *args, **kwargs)
     else:
-        code = VectorPythonCallable("numpy.ndarray", expr, *symbols).code("MyFunc", scalar_type="float", lib=lib)
+        r = ScalarPythonCallable(arg, *args, **kwargs)
+
+    code = r.code("MyFunc", lib=lib)
     glob_vars = {"numpy": np, "math": math, "cmath": cmath}
     exec(code, glob_vars)
     return glob_vars['MyFunc']
@@ -189,7 +152,7 @@ class ScalarLambdaExpr:
     def __init__(self, expr: Expr, *symbols: Symbol):
         self.expr = expr
         self.symbols = symbols
-        self._callable = self.expr.lambdify(symbols, lib='numpy')
+        self._callable = self.expr.lambdify(*symbols, lib='numpy')
 
     def __call__(self, *args)->float|complex:
         return self._callable(*args)
@@ -207,7 +170,7 @@ class VectorLambdaExpr:
         self.expr = expr
         self.symbols = symbols
         self.code = f"np.array({_multidim_lambda_list(expr, lib="math")})"
-        self._callable = lambdify(*expr, symbols=symbols, lib="numpy")
+        self._callable = lambdify(expr, "numpy", *symbols)
 
     def __call__(self, *args)->np.ndarray:
         return self._callable(*args)

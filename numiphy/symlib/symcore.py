@@ -226,8 +226,8 @@ class Expr:
     def is_const_wrt(self, x: Symbol):
         return x not in self.variables
     
-    def lambdify(self, varnames, lib='math'):
-        return lambdify(self, symbols=varnames, lib=lib)
+    def lambdify(self, *symbols: Symbol, lib = "math"):
+        return lambdify(self, lib, *symbols)
 
     def powsimp(self):
         return powsimp(self)
