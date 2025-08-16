@@ -218,7 +218,7 @@ class OdeSystem:
             ev_name = f'ev{i}'
             event_block += self.events[i].init_code(ev_name, self.t, *self.q, args=self.args)+'\n'
             event_array.append(f'&{ev_name}')
-        event_array = f'std::vector<Event<double, -1>*>' +' events = {'+', '.join(event_array)+'};'
+        event_array = f'std::vector<const Event<double, -1>*>' +' events = {'+', '.join(event_array)+'};'
         return '\n\n'.join([event_block, event_array])
 
     def module_code(self, name = "ode_module"):
