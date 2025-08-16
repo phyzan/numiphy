@@ -123,7 +123,7 @@ class SymbolicPeriodicEvent(SymbolicEvent):
         args = tuple(args)
         mask = "nullptr"
         if self.mask is not None:
-            mask = TensorLowLevelCallable(self.mask, t=t, args=args).lambda_code()
+            mask = TensorLowLevelCallable(self.mask, t=t, q=q, args=args).lambda_code()
         if self.start is None:
             return f'{self._cls}<double, -1> {var_name}("{self.name}", {self.period}, {mask}, {'true' if self.hide_mask else 'false'});'
         else:
