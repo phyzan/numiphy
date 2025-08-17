@@ -89,16 +89,37 @@ class SymbolicEvent:
             else:
                 return (self.name, self.event, self.check_if, self.mask, self.hide_mask, self.event_tol) == (other.name, other.event, other.check_if, other.mask, other.hide_mask, other.event_tol)
         return False
-            
+    
+    @property
+    def kwargs(self):
+        '''
+        override
+        '''
+        return {"name": self.name, "hide_mask": self.hide_mask, "event_tol": self.event_tol}
+    
+    def toEvent(self, **kwargs):
+        '''
+        override
+        '''
+        return Event(**kwargs, **self.kwargs)
+    
     def init_code(self, var_name, t, *q, args):
-        lambda_code = ScalarLowLevelCallable(self.event, t, q=q, args=args).lambda_code()
-        checkif = "nullptr"
+        '''
+        override
+        '''
+        names = [f'{var_name}_EVENT', f'{var_name}_CHECK', f'{var_name}_MASK']
+        ev_code = ScalarLowLevelCallable(self.event, t, q=q, args=args).code(names[0])
+
         if self.check_if is not None:
-            checkif = BooleanLowLevelCallable(self.check_if, t, q=q, args=args).lambda_code()
-        mask = "nullptr"
+            checkif = BooleanLowLevelCallable(self.check_if, t, q=q, args=args).code(names[1])
+        else:
+            checkif = f"void* {names[1]} = nullptr;"
+
         if self.mask is not None:
-            mask = TensorLowLevelCallable(self.mask, t, q=q, args=args).lambda_code()
-        return f'{self._cls}<double, -1> {var_name}("{self.name}", {lambda_code}, {checkif}, {mask}, {'true' if self.hide_mask else 'false'}, {self.event_tol});'
+            mask = TensorLowLevelCallable(self.mask, t, q=q, args=args).code(names[2])
+        else:
+            mask = f"void* {names[2]} = nullptr;"
+        return {"when": (names[0], ev_code), "check_if": (names[1], checkif), "mask": (names[2], mask)}
 
 
 class SymbolicPeriodicEvent(SymbolicEvent):
@@ -117,17 +138,24 @@ class SymbolicPeriodicEvent(SymbolicEvent):
             elif (self.period, self.start) == (other.period, other.start):
                 return SymbolicEvent.__eq__(self, other)
         return False
-            
+    
+    @property
+    def kwargs(self):
+        return {"name": self.name, "period": self.period, "start": self.start, "hide_mask": self.hide_mask}
+
+    def toEvent(self, **kwargs):
+        '''
+        override
+        '''
+        return PeriodicEvent(**kwargs, **self.kwargs)
 
     def init_code(self, var_name, t, *q, args):
-        args = tuple(args)
-        mask = "nullptr"
+        name = f"{var_name}_MASK"
         if self.mask is not None:
-            mask = TensorLowLevelCallable(self.mask, t=t, q=q, args=args).lambda_code()
-        if self.start is None:
-            return f'{self._cls}<double, -1> {var_name}("{self.name}", {self.period}, {mask}, {'true' if self.hide_mask else 'false'});'
+            mask = TensorLowLevelCallable(self.mask, t, q=q, args=args).code(name)
         else:
-            return f'{self._cls}<double, -1> {var_name}("{self.name}", {self.period}, {self.start}, {mask}, {'true' if self.hide_mask else 'false'});'
+            mask = f"void* {name} = nullptr;"
+        return {"mask": (name, mask)}
 
 
 
@@ -142,7 +170,6 @@ class OdeSystem:
     t: Symbol
     q: tuple[Symbol, ...]
     events: tuple[SymbolicEvent, ...]
-    _ptrs: tuple
 
     def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
         obj = object.__new__(cls)
@@ -177,7 +204,6 @@ class OdeSystem:
             if cls._cls_instances[i] == obj:
                 return cls._cls_instances[i]
         cls._cls_instances.append(obj)
-        obj._ptrs = None
         return obj
 
     def __eq__(self, other: OdeSystem):
@@ -189,6 +215,10 @@ class OdeSystem:
     @property
     def Nsys(self):
         return len(self.ode_sys)
+    
+    @property
+    def Nargs(self):
+        return len(self.args)
     
     @property
     def module_name(self):
@@ -203,34 +233,65 @@ class OdeSystem:
                 matrix[i][j] = array[i].diff(symbols[j])
         return matrix
     
+    @property
     def odefunc_code(self):
         f = TensorLowLevelCallable(self.ode_sys, self.t, q=self.q, args=self.args)
         return f.code("ODE_FUNC")
     
+    @property
     def jacobian_code(self):
         f = TensorLowLevelCallable(self.jacmat, self.t, q=self.q, args=self.args)
         return f.code("JAC_FUNC")
     
+    @cached_property
+    def _event_dict(self)->dict[str, dict[str, tuple[str, str]]]:
+        events = {}
+        for i, ev in enumerate(self.events):
+            events[ev.name] = ev.init_code(f'EVENT_{i+1}', self.t, *self.q, args=self.args)
+        return events
+    
+    @cached_property
+    def _event_obj_map(self):
+        return {event.name: event for event in self.events}
+    
+    @cached_property
+    def _func_names(self)->list[str]:
+        res = []
+        for name, data in self._event_dict.items():
+            for param_name, (func_name, func_code) in data.items():
+                res.append(func_name)
+        return ["ODE_FUNC", "JAC_FUNC", *res]
+    
+    @cached_property
+    def true_events(self)->tuple[Event]:
+        res = []
+        ptrs = self._pointers
+        i=0
+        for name, data in self._event_dict.items():
+            extra_kwargs = {"input_size": self.Nsys, "args_size": self.Nargs}
+            for param_name, (func_name, func_code) in data.items():
+                extra_kwargs[param_name] = ptrs[i+2]
+                i+=1
+            res.append(self._event_obj_map[name].toEvent(**extra_kwargs))
+        return res
+
     def event_block(self)->str:
-        event_block = ''
-        event_array = []
-        for i in range(len(self.events)):
-            ev_name = f'ev{i}'
-            event_block += self.events[i].init_code(ev_name, self.t, *self.q, args=self.args)+'\n'
-            event_array.append(f'&{ev_name}')
-        event_array = f'std::vector<const Event<double, -1>*>' +' events = {'+', '.join(event_array)+'};'
-        return '\n\n'.join([event_block, event_array])
+        res = ''
+        for name, data in self._event_dict.items():
+            for param_name, (func_name, func_code) in data.items():
+                res += func_code+'\n\n'
+        return res
 
     def module_code(self, name = "ode_module"):
-        header = "#include <odepack/pyode.hpp>"
+        header = "#include <pybind11/pybind11.h>\n\nnamespace py = pybind11;"
         event_block = self.event_block()
-        ode_func = self.odefunc_code()
-        jac_func = self.jacobian_code()
-        r = '\n\tm.def("func_ptr", [](){return reinterpret_cast<const void*>(ODE_FUNC);});'
-        r += '\n\tm.def("jac_ptr", [](){return reinterpret_cast<const void*>(JAC_FUNC);});'
-        r += '\n\tm.def("ev_ptr", [](){return reinterpret_cast<const void*>(&events);});'
-        r += '\n\tm.def("mask_ptr", [](){void* ptr = nullptr; return ptr;});'
-        pybind_cond = f"PYBIND11_MODULE({name}, m)"+'{'+r+'\n}'
+        ode_func = self.odefunc_code
+        jac_func = self.jacobian_code
+
+        array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({fname})' for fname in self._func_names])+")"
+
+        py_func = '\n\tm.def("pointers", [](){return '+array+';});'
+        pybind_cond = f"PYBIND11_MODULE({name}, m)"+'{'+py_func+'\n}'
         items = [header, event_block, ode_func, jac_func, pybind_cond]
         return "\n\n".join(items)
 
@@ -255,16 +316,15 @@ class OdeSystem:
     def get(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->LowLevelODE:
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return LowLevelODE(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return LowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, jac=self.lowlevel_jac, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.true_events)
     
     def get_variational(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45")->VariationalLowLevelODE:
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return VariationalLowLevelODE(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return VariationalLowLevelODE(self.lowlevel_odefunc, t0=t0, q0=q0, jac=self.lowlevel_jac, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.true_events)
     
-    def pointers(self):
-        if self._ptrs is not None:
-            return self._ptrs
+    @cached_property
+    def _pointers(self)->list:
         
         modname = self.module_name
 
@@ -273,20 +333,15 @@ class OdeSystem:
             temp_module = tools.import_lowlevel_module(so_dir, modname)
         
         self.__class__._counter += 1
-        self._ptrs = temp_module.func_ptr(), temp_module.jac_ptr(), temp_module.ev_ptr()
-        return self._ptrs
+        return temp_module.pointers()
     
     @cached_property
     def lowlevel_odefunc(self):
-        return LowLevelFunction(self.pointers()[0], len(self.ode_sys), len(self.args))
+        return LowLevelFunction(self._pointers[0], self.Nsys, [self.Nsys], self.Nargs)
     
     @cached_property
     def lowlevel_jac(self):
-        return LowLevelJacobian(self.pointers()[1], len(self.ode_sys), len(self.args))
-    
-    @cached_property
-    def lowlevel_events(self):
-        return LowLevelEventArray(self.pointers()[2], len(self.ode_sys), len(self.args))
+        return LowLevelFunction(self._pointers[1], self.Nsys, [self.Nsys, self.Nsys], self.Nargs)
     
     @cached_property
     def _odefunc(self):

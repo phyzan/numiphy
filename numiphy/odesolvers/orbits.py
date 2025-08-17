@@ -140,7 +140,7 @@ class HamiltonianSystem2D(OdeSystem):
     def get_orbit(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45"):
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return HamiltonianOrbit2D(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return HamiltonianOrbit2D(self.lowlevel_odefunc, jac=self.lowlevel_jac, t0=t0, q0=q0, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.true_events)
     
 
 
@@ -165,4 +165,4 @@ class HamiltonianVariationalSystem2D(HamiltonianSystem2D):
     def get_variational_orbit(self, t0: float, q0: np.ndarray, period: float, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45"):
         if len(q0) != self.Nsys:
             raise ValueError(f"The size of the initial conditions provided is {len(q0)} instead of {self.Nsys}")
-        return HamiltonianVariationalOrbit2D(self.lowlevel_odefunc, self.lowlevel_jac, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.lowlevel_events)
+        return HamiltonianVariationalOrbit2D(self.lowlevel_odefunc, jac=self.lowlevel_jac, t0=t0, q0=q0, period=period, rtol=rtol, atol=atol, min_step=min_step, max_step=max_step, first_step=first_step, args=args, method=method, events=self.true_events)
