@@ -24,7 +24,7 @@ class _LowLevelCallable(_CallableFunction):
         return f'{return_type} {name}({arg_list})'+'{\n'+code_impl+'\n}'
     
     def code(self, name: str):
-        return self._code(name, self.return_id(), self.argument_list(), self.core_impl())
+        return self._code(name, self.return_id(), self.argument_list()+', const void*', self.core_impl())
     
     def lambda_code(self):
         return f'[]({self.argument_list()}) -> {self.return_id()} ' + '{' +f'{self.core_impl()}'+'}'
@@ -74,10 +74,10 @@ class SymbolicEvent:
     mask: Iterable[Expr]
     hide_mask: bool
 
-    def __init__(self, name: str, event: Expr, check_if: Boolean=None, mask: Iterable[Expr]=None, hide_mask=False, event_tol=1e-12):
+    def __init__(self, name: str, event: Expr, dir=0, mask: Iterable[Expr]=None, hide_mask=False, event_tol=1e-12):
         self.name = name
         self.event = event
-        self.check_if = check_if
+        self.dir = dir
         self.mask = mask
         self.hide_mask = hide_mask
         self.event_tol = event_tol
@@ -87,7 +87,7 @@ class SymbolicEvent:
             if other is self:
                 return True
             else:
-                return (self.name, self.event, self.check_if, self.mask, self.hide_mask, self.event_tol) == (other.name, other.event, other.check_if, other.mask, other.hide_mask, other.event_tol)
+                return (self.name, self.event, self.dir, self.mask, self.hide_mask, self.event_tol) == (other.name, other.event, other.dir, other.mask, other.hide_mask, other.event_tol)
         return False
     
     @property
@@ -95,13 +95,13 @@ class SymbolicEvent:
         '''
         override
         '''
-        return {"name": self.name, "hide_mask": self.hide_mask, "event_tol": self.event_tol}
+        return {"name": self.name, "hide_mask": self.hide_mask, "event_tol": self.event_tol, "dir": self.dir}
     
-    def toEvent(self, **kwargs):
+    def toEvent(self, when: ObjFunc, mask: Func=None, **__extra):
         '''
         override
         '''
-        return Event(**kwargs, **self.kwargs)
+        return Event(when=when, mask=mask, **self.kwargs, **__extra)
     
     def init_code(self, var_name, t, *q, args):
         '''
@@ -110,16 +110,11 @@ class SymbolicEvent:
         names = [f'{var_name}_EVENT', f'{var_name}_CHECK', f'{var_name}_MASK']
         ev_code = ScalarLowLevelCallable(self.event, t, q=q, args=args).code(names[0])
 
-        if self.check_if is not None:
-            checkif = BooleanLowLevelCallable(self.check_if, t, q=q, args=args).code(names[1])
-        else:
-            checkif = f"void* {names[1]} = nullptr;"
-
         if self.mask is not None:
             mask = TensorLowLevelCallable(self.mask, t, q=q, args=args).code(names[2])
         else:
             mask = f"void* {names[2]} = nullptr;"
-        return {"when": (names[0], ev_code), "check_if": (names[1], checkif), "mask": (names[2], mask)}
+        return {"when": (names[0], ev_code), "mask": (names[2], mask)}
 
 
 class SymbolicPeriodicEvent(SymbolicEvent):
@@ -143,11 +138,11 @@ class SymbolicPeriodicEvent(SymbolicEvent):
     def kwargs(self):
         return {"name": self.name, "period": self.period, "start": self.start, "hide_mask": self.hide_mask}
 
-    def toEvent(self, **kwargs):
+    def toEvent(self, mask: Func=None, **__extra):
         '''
         override
         '''
-        return PeriodicEvent(**kwargs, **self.kwargs)
+        return PeriodicEvent(**self.kwargs, mask=mask, **__extra)
 
     def init_code(self, var_name, t, *q, args):
         name = f"{var_name}_MASK"
@@ -268,7 +263,7 @@ class OdeSystem:
         ptrs = self._pointers
         i=0
         for name, data in self._event_dict.items():
-            extra_kwargs = {"input_size": self.Nsys, "args_size": self.Nargs}
+            extra_kwargs = {"__Nsys": self.Nsys, "__Nargs": self.Nargs}
             for param_name, (func_name, func_code) in data.items():
                 extra_kwargs[param_name] = ptrs[i+2]
                 i+=1
@@ -346,7 +341,7 @@ class OdeSystem:
     @cached_property
     def _odefunc(self):
         kwargs = {str(x): x for x in self.args}
-        return lambdify(self.q, "numpy", self.t, q=self.q, **kwargs)
+        return lambdify(self.ode_sys, "numpy", self.t, q=self.q, **kwargs)
     
     @cached_property
     def _jac(self):
