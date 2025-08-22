@@ -134,7 +134,7 @@ class HamiltonianSystem2D(OdeSystem):
         q = [x, y, px, py]
         f = [px, py] + [-V.diff(x), -V.diff(y)]
         obj = object.__new__(cls)
-        return cls._process_args(obj, f, t, *q, args=args, events=events)
+        return cls._process_args(obj, f, t, q, args=args, events=events)
     
 
     def get_orbit(self, t0: float, q0: np.ndarray, *, rtol=1e-6, atol=1e-12, min_step=0., max_step=np.inf, first_step=0., args=(), method="RK45"):

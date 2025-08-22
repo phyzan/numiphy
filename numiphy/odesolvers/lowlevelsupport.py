@@ -166,12 +166,13 @@ class OdeSystem:
     q: tuple[Symbol, ...]
     events: tuple[SymbolicEvent, ...]
 
-    def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
+    def __new__(cls, ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
         obj = object.__new__(cls)
-        return cls._process_args(obj, ode_sys, t, *q, args=args, events=events)
+        return cls._process_args(obj, ode_sys, t, q, args=args, events=events)
     
     @classmethod
-    def _process_args(cls, obj: OdeSystem, ode_sys: Iterable[Expr], t: Symbol, *q: Symbol, args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
+    def _process_args(cls, obj: OdeSystem, ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol], args: Iterable[Symbol] = (), events: Iterable[SymbolicEvent]=()):
+        q = tuple([qi for qi in q])
         ode_sys = tuple(ode_sys)
         args = tuple(args)
         events = tuple(events)
@@ -258,7 +259,7 @@ class OdeSystem:
         return ["ODE_FUNC", "JAC_FUNC", *res]
     
     @cached_property
-    def true_events(self)->tuple[Event]:
+    def true_events(self)->tuple[Event, ...]:
         res = []
         ptrs = self._pointers
         i=0
@@ -365,7 +366,7 @@ def VariationalOdeSystem(ode_sys: Iterable[Expr], t: Symbol, q: Iterable[Symbol]
         var_odesys.append(sum([ode_sys[i].diff(q[j])*delq[j] for j in range(n)]))
     
     new_sys = ode_sys + tuple(var_odesys)
-    return OdeSystem(new_sys, t, *q, *delq, args=args, events=events)
+    return OdeSystem(new_sys, t, [*q, *delq], args=args, events=events)
 
 
 def load_ode_data(filedir: str)->tuple[np.ndarray[int], np.ndarray, np.ndarray]:
