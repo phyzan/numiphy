@@ -279,7 +279,7 @@ class OdeSystem:
         return res
 
     def module_code(self, name = "ode_module"):
-        header = "#include <pybind11/pybind11.h>\n\nnamespace py = pybind11;"
+        header = "#include <pybind11/pybind11.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
         event_block = self.event_block()
         ode_func = self.odefunc_code
         jac_func = self.jacobian_code
