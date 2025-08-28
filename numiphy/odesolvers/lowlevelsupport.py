@@ -375,3 +375,23 @@ def load_ode_data(filedir: str)->tuple[np.ndarray[int], np.ndarray, np.ndarray]:
     t = data[:, 1].copy()
     q = data[:, 2:].copy()
     return events, t, q
+
+
+def HamiltonianSystem2D(V: Expr, t: Symbol, x, y, px, py, args = (), events=()):
+    q = [x, y, px, py]
+    f = [px, py] + [-V.diff(x), -V.diff(y)]
+    return OdeSystem(f, t, q, args=args, events=events)
+
+def HamiltonianVariationalSystem2D(V: Expr, t: Symbol, x, y, px, py, delx, dely, delpx, delpy, args = (), events=()):
+    q = [x, y, px, py]
+    f = [px, py] + [-V.diff(x), -V.diff(y)]
+    delq = [delx, dely, delpx, delpy]
+
+    n = 4
+    var_odesys = []
+    for i in range(n):
+        var_odesys.append(sum([f[i].diff(q[j])*delq[j] for j in range(n)]))
+    
+    new_sys = f + var_odesys
+
+    return OdeSystem(new_sys, t, [*q, *delq], args=args, events=events)

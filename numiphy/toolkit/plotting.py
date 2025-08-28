@@ -302,6 +302,7 @@ class Figure:
     def copy(self):
         fig = self.__class__(self.name, **self.parameters)
         fig._artists = [artist.copy() for artist in self._artists]
+        fig.set(**self.parameters)
         return fig
 
 

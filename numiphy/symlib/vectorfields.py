@@ -74,7 +74,7 @@ class VectorField2D:
         c = Circle(r, q)
         return self.flow(c, *args)
     
-    def plot(self, grid: grids.Grid, *args, **kwargs):
+    def plot(self, grid: grids.Grid, *args, scaled=True, **kwargs):
 
         def update(event):
             xlim = ax.get_xlim()
@@ -86,7 +86,10 @@ class VectorField2D:
             xmesh = np.meshgrid(x, y, indexing='ij')
             X, Y = self(*xmesh, *args)
             mag = np.sqrt(X**2+Y**2)
-            ax.quiver(*xmesh, X/mag, Y/mag, mag, **kwargs)
+            if (scaled):
+                ax.quiver(*xmesh, X/mag, Y/mag, mag, **kwargs)
+            else:
+                ax.quiver(*xmesh, X/mag, Y/mag, **kwargs)
             for line in lines:
                 ax.add_line(line)
             ax.set_xlim(*xlim)
@@ -100,7 +103,10 @@ class VectorField2D:
         X, Y = self(*xmesh, *args)
         mag = np.sqrt(X**2+Y**2)
 
-        ax.quiver(*xmesh, X/mag, Y/mag, mag, **kwargs)
+        if (scaled):
+            ax.quiver(*xmesh, X/mag, Y/mag, mag, **kwargs)
+        else:
+            ax.quiver(*xmesh, X/mag, Y/mag, **kwargs)
         fig.canvas.mpl_connect('button_release_event', update)
         return fig, ax
     
