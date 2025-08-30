@@ -1881,33 +1881,25 @@ class Piecewise(Expr):
     
     @cached_property
     def expressions(self)->tuple[Expr, ...]:
-        res = []
-        for i in range(self.N):
-            res.append(self._args[2*i])
-        return tuple(res)
+        return self._args[:self.N]
     
     @cached_property
     def booleans(self)->tuple[Boolean, ...]:
-        res = []
-        for i in range(self.N):
-            res.append(self._args[2*i+1])
-        return tuple(res)
+        return self._args[self.N:]
     
     @property
     def cases(self)->tuple[tuple[Expr, Boolean], ...]:
         return tuple([(self.expressions[i], self.booleans[i]) for i in range(self.N)])
     
     def remake_cases(self, attr: str, *args, **kwargs):
-        cases = []
-        for i in range(self.N):
-            cases.append((getattr(self.args[2*i], attr)(*args, **kwargs), self.args[2*i+1]))
-        return self.init(*cases)
+        cases = [getattr(arg, attr)(*args, **kwargs) for arg in self.expressions]
+        return self.init(*cases, *self.booleans)
     
     def init(self, *args, simplify=True):
+        n = len(args)//2
         cases = []
-        for i in range(len(args)//2):
-            cases.append((args[2*i], args[2*i+1]))
-
+        for i in range(n):
+            cases.append((args[i], args[i+n]))
         return self.__class__(*cases, simplify=simplify)
 
     def _diff(self, var: Symbol):
@@ -1921,14 +1913,14 @@ class Piecewise(Expr):
     
     def repr(self, lib=""):
         if lib == '':
-            return f"{self.__class__.__name__}({', '.join([str(i) for i in self.Args])})"
+            return f"{self.__class__.__name__}({', '.join([f'({self.expressions[i]}, {self.booleans[i]})' for i in range(self.N)])})"
         elif lib == 'numpy':
-            return f'numpy.where({self.booleans[0].repr(lib)}, {self.expressions[0].repr(lib)}, {self.init(*self.args[2:]).repr(lib)})'
+            return f'numpy.where({self.booleans[0].repr(lib)}, {self.expressions[0].repr(lib)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib)})'
         else:
-            return f'({self.expressions[0].repr(lib)} if {self.booleans[0].repr(lib)} else ({self.__class__(*self.args[2:]).repr(lib)}))'
+            return f'({self.expressions[0].repr(lib)} if {self.booleans[0].repr(lib)} else ({self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib)}))'
 
     def lowlevel_repr(self, scalar_type="double"):
-        return f"(({self.booleans[0].lowlevel_repr(scalar_type)}) ? {self.expressions[0].lowlevel_repr(scalar_type)} : {self.init(*self.args[2:]).lowlevel_repr(scalar_type)})"
+        return f"(({self.booleans[0].lowlevel_repr(scalar_type)}) ? {self.expressions[0].lowlevel_repr(scalar_type)} : {self.init(*self.expressions[1:], *self.booleans[1:]).lowlevel_repr(scalar_type)})"
         
     def get_ndarray(self, x, **kwargs):
         bools = self._elementwise_boolean(x, **kwargs)
