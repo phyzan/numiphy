@@ -1,17 +1,15 @@
 from __future__ import annotations
 from numiphy.findiffs import grids
 from numiphy.odesolvers import LowLevelODE, OdeSystem, Symbol, Rational
+from numiphy.toolkit.plotting import *
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.collections as mcollections
-from matplotlib.patches import FancyArrowPatch
-import matplotlib.quiver as mquiver
 import scipy.optimize as sciopt
 import scipy.integrate as scint
 from numiphy.symlib import symcore as sym
 from numiphy.symlib.pylambda import ScalarLambdaExpr, VectorLambdaExpr
 from numiphy.symlib.geom import Line2D, Circle
-
+from numiphy.toolkit.tools import call_with_consumed, call_builtin_with_consumed
+import warnings
 
 class VectorField2D:
 
@@ -60,7 +58,7 @@ class VectorField2D:
         cdot = self.flowdot(line)
         return scint.quad(cdot, *line.lims, args=args, epsabs=1e-10)[0]
     
-    def streamline(self, x0, y0, s, curve_length=True, *args, **odekw):
+    def streamline(self, x0, y0, s, curve_length=True, rich=False, **kwargs):
         '''
         Let F be a vector field.
         A field line R(s) passing through a point (x0, y0) satisfies the equation
@@ -77,154 +75,64 @@ class VectorField2D:
             A = (fx**2 + fy**2)**Rational(1, 2)
         else:
             A = 1
-        odesys = OdeSystem([fx/A, fy/A], t, [self.xvar, self.yvar], self.args)
-        ode = odesys.get(0, [x0, y0], args=args, **odekw)
-        return ode.integrate(s, include_first=True)
+        odesys = OdeSystem([fx/A, fy/A], t, [self.xvar, self.yvar], self.args, events=kwargs.pop('events', ()))
+
+        ode, kwargs = call_with_consumed(odesys.get, t0=0, q0=[x0, y0], **kwargs)
+        if rich:
+            res, kwargs = call_builtin_with_consumed(ode.rich_integrate, dict(event_options=[], max_prints=0), s, **kwargs)
+        else:
+            res, kwargs = call_builtin_with_consumed(ode.integrate, dict(max_frames=-1, event_options=[], max_prints=0, include_first=False), s, **kwargs)
+        if kwargs:
+            warnings.warn(f"The keyword arguments {kwargs} had no effect")
+        return res
         
     def loop(self, q, r, *args):
         c = Circle(r, q)
         return self.flow(c, *args)
     
-    def plot(self, grid: grids.Grid, *args, scaled=True, **kwargs):
+    def plot(self, grid: grids.Grid, args=(), scaled=True, **kwargs):
 
         def update(event):
-            # -------------------------
-            # 0. Store current axes limits
-            # -------------------------
-            xlim = ax.get_xlim()
-            ylim = ax.get_ylim()
-
-            # -------------------------
-            # 1. Store lines data
-            # -------------------------
-            lines_data = []
-            for line in ax.get_lines():
-                lines_data.append({
-                    'x': line.get_xdata(),
-                    'y': line.get_ydata(),
-                    'color': line.get_color(),
-                    'linestyle': line.get_linestyle(),
-                    'linewidth': line.get_linewidth(),
-                    'marker': line.get_marker(),
-                    'markersize': line.get_markersize(),
-                    'alpha': line.get_alpha(),
-                    'zorder': line.get_zorder()
-                })
-
-            # -------------------------
-            # 2. Store scatters data
-            # -------------------------
-            scatters_data = []
-            for sc in ax.collections:
-                if isinstance(sc, mcollections.PathCollection) and not isinstance(sc, mquiver.Quiver):
-                    scatters_data.append({
-                        'offsets': sc.get_offsets(),
-                        'sizes': sc.get_sizes(),
-                        'facecolors': sc.get_facecolors(),
-                        'edgecolors': sc.get_edgecolors(),
-                        'alpha': sc.get_alpha(),
-                        'zorder': sc.get_zorder()
-                    })
-
-            # -------------------------
-            # 3. Store FancyArrowPatch data
-            # -------------------------
-            arrows_data = []
-            for patch in ax.patches:
-                if isinstance(patch, FancyArrowPatch):
-                    arrows_data.append({
-                        'posA': patch.get_path().vertices[0],   # start
-                        'posB': patch.get_path().vertices[-1],  # end
-                        'arrowstyle': patch.get_arrowstyle(),
-                        'color': patch.get_edgecolor(),
-                        'linewidth': patch.get_linewidth(),
-                        'alpha': patch.get_alpha(),
-                        'zorder': patch.get_zorder(),
-                        'mutation_scale': patch.get_mutation_scale()
-                    })
-
-            # -------------------------
-            # 4. Clear axes
-            # -------------------------
+            xlims = ax.get_xlim() if figure.xlims[0] is None else figure.xlims
+            ylims = ax.get_ylim() if figure.ylims[0] is None else figure.ylims
             ax.clear()
 
-            # -------------------------
-            # 5. Recreate quiver
-            # -------------------------
-            x = np.linspace(*xlim, grid.shape[0])
-            y = np.linspace(*ylim, grid.shape[1])
-            xmesh = np.meshgrid(x, y, indexing='ij')
+            qp: QuiverPlot = figure.artists[0]
+            qp.args = get_quiver_data(xlims, ylims)
+            figure.draw(ax)
+
+            ax.set_xlim(*xlims)
+            ax.set_ylim(*ylims)
+
+        def get_quiver_data(xlims, ylims):
+            x = np.linspace(*xlims, grid.shape[0])
+            y = np.linspace(*ylims, grid.shape[1])
+            xmesh = np.meshgrid(x, y, indexing='xy')
             X, Y = self(*xmesh, *args)
             mag = np.sqrt(X**2 + Y**2)
+            with np.errstate(invalid='ignore'):
+                X = np.where(X!=0, X/mag, 0)
+                Y = np.where(Y!=0, Y/mag, 0)
+            res = x, y, X, Y
             if scaled:
-                ax.quiver(*xmesh, X/mag, Y/mag, mag, **kwargs)
-            else:
-                ax.quiver(*xmesh, X/mag, Y/mag, **kwargs)
+                res += (mag,)
+            return res
 
-            # -------------------------
-            # 6. Re-add old lines
-            # -------------------------
-            for ld in lines_data:
-                ax.plot(ld['x'], ld['y'],
-                        color=ld['color'],
-                        linestyle=ld['linestyle'],
-                        linewidth=ld['linewidth'],
-                        marker=ld['marker'],
-                        markersize=ld['markersize'],
-                        alpha=ld['alpha'],
-                        zorder=ld['zorder'])
+        figure = SquareFigure("VectorField", figsize=(5, 5))
+        figure.ftype = 'pdf'
+        figure.xlabel = f'${self.xvar}$'
+        figure.ylabel = f'${self.yvar}$'
+        figure.yrot = 0
+        figure.fontsize['label'] = 15
+        figure.grid = dict(visible=False)
 
-            # -------------------------
-            # 7. Re-add old scatters
-            # -------------------------
-            for sd in scatters_data:
-                ax.scatter(sd['offsets'][:, 0], sd['offsets'][:, 1],
-                        s=sd['sizes'],
-                        facecolors=sd['facecolors'],
-                        edgecolors=sd['edgecolors'],
-                        alpha=sd['alpha'],
-                        zorder=sd['zorder'])
+        figure.aspect = 'equal'
+        figure.add(QuiverPlot(*get_quiver_data(*grid.limits), **kwargs))
 
-            # -------------------------
-            # 8. Re-add old FancyArrowPatches
-            # -------------------------
-            for ad in arrows_data:
-                arrow = FancyArrowPatch(ad['posA'], ad['posB'],
-                                        arrowstyle=ad['arrowstyle'],
-                                        color=ad['color'],
-                                        linewidth=ad['linewidth'],
-                                        alpha=ad['alpha'],
-                                        zorder=ad['zorder'],
-                                        mutation_scale=ad['mutation_scale'])
-                ax.add_patch(arrow)
-
-            # -------------------------
-            # 9. Restore limits
-            # -------------------------
-            ax.set_xlim(*xlim)
-            ax.set_ylim(*ylim)
-
-        fig, ax = plt.subplots(figsize=(10, 10))
-        ax.set_xlabel(str(self.xvar), fontsize=15)
-        ax.set_ylabel(str(self.yvar), fontsize=15, rotation=0)
-
-        xmesh = grid.x_mesh()
-        X, Y = self(*xmesh, *args)
-        mag = np.sqrt(X**2+Y**2)
-
-        if (scaled):
-            ax.quiver(*xmesh, X/mag, Y/mag, mag, **kwargs)
-        else:
-            ax.quiver(*xmesh, X/mag, Y/mag, **kwargs)
+        fig, ax = figure.plot()
+        if figure.xlims[0] is not None and figure.xlims[1] is not None:
+            ax.set_xlim(*figure.xlims)
+        if figure.ylims[0] is not None and figure.ylims[1] is not None:
+            ax.set_ylim(*figure.ylims)    
         fig.canvas.mpl_connect('button_release_event', update)
-        return fig, ax, lambda : update(None)
-    
-    def plot_line(self, line: Line2D, grid: grids.Grid, n=400, *args, **kwargs):
-        fig, ax, upd = VectorField2D.plot(self, grid, *args, **kwargs)
-        u = np.linspace(*line.lims, n)
-        ax.plot(line.x(u), line.y(u))
-        return fig, ax, upd
-    
-    def plot_circle(self, q, r, grid: grids.Grid, n=400, *args, **kwargs):
-        c = Circle(r, q)
-        return VectorField2D.plot_line(self, c, grid, n, *args, **kwargs)
+        return figure, fig, ax, lambda : update(None)

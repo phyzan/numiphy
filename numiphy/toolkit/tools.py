@@ -16,8 +16,25 @@ import pickle
 import copy
 import sysconfig
 import importlib.util
+from typing import Any
 from .compile_tools import *
 
+def call_with_consumed(func, **kwargs):
+    sig = inspect.signature(func)
+    valid_keys = set(sig.parameters)
+    # separate kwargs into two parts
+    used = {k: v for k, v in kwargs.items() if k in valid_keys}
+    rest = {k: v for k, v in kwargs.items() if k not in valid_keys}
+    return func(**used), rest
+
+def call_builtin_with_consumed(func, defaults: dict[str, Any], *args, **kwargs):
+    used = {}
+    for param in defaults:
+        if param in kwargs:
+            used[param] = kwargs.pop(param)
+        else:
+            used[param] = defaults[param]
+    return func(*args, **used), kwargs
 
 def import_lowlevel_module(directory: str, module_name):
     so_file = os.path.join(directory, module_name)

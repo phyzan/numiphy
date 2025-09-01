@@ -2,6 +2,7 @@ from __future__ import annotations
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import matplotlib.animation as mpl_anim
+from matplotlib.patches import FancyArrowPatch
 from ..findiffs import grids
 import sys, os
 from ..toolkit import tools
@@ -335,10 +336,20 @@ class Artist:
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
-        self.kwargs['x'] = [float(i) for i in kwargs['x']]
-        self.kwargs['y'] = [float(i) for i in kwargs['y']]
 
     def apply(self, ax: Axes):...
+    
+    @property
+    def params(self):
+        return self.kwargs.copy()
+
+
+class PointCollection(Artist):
+
+    def __init__(self, **kwargs):
+        Artist.__init__(self, **kwargs)
+        self.kwargs['x'] = [float(i) for i in kwargs['x']]
+        self.kwargs['y'] = [float(i) for i in kwargs['y']]
 
     @property
     def xcoords(self)->list[float]:
@@ -350,11 +361,11 @@ class Artist:
     
     @property
     def params(self):
-        d = self.kwargs.copy()
+        d = Artist.params.__get__(self)
         d.pop('x')
         d.pop('y')
         return d
-
+    
     def add(self, x, y):
         self.xcoords.append(x)
         self.ycoords.append(y)
@@ -371,21 +382,21 @@ class Artist:
     
     def copy(self):
         return self.__class__(x=self.xcoords.copy(), y=self.ycoords.copy(), **self.params)
+    
 
-
-class LinePlot(Artist):
-
-    def apply(self, ax):
-        ax.plot(self.xcoords, self.ycoords, **self.params)
-
-
-class ScatterPlot(Artist):
+class LinePlot(PointCollection):
 
     def apply(self, ax):
-        ax.scatter(self.xcoords, self.ycoords, **self.params)
+        return ax.plot(self.xcoords, self.ycoords, **self.params)
 
 
-class ErrorPlot(Artist):
+class ScatterPlot(PointCollection):
+
+    def apply(self, ax):
+        return ax.scatter(self.xcoords, self.ycoords, **self.params)
+
+
+class ErrorPlot(PointCollection):
 
     def __init__(self, **kwargs):
 
@@ -398,9 +409,27 @@ class ErrorPlot(Artist):
         super().__init__(**kwargs)
 
     def apply(self, ax):
-        ax.errorbar(self.xcoords, self.ycoords, **self.params)
+        return ax.errorbar(self.xcoords, self.ycoords, **self.params)
 
-    
+
+class QuiverPlot(Artist):
+
+    def __init__(self, x: np.ndarray, y: np.ndarray, X: np.ndarray, Y:np.ndarray, mag=None, **kwargs):
+        super().__init__(**kwargs)
+        self.args = (x, y, X, Y)
+        if mag is not None:
+            self.args += (mag,)
+
+    def apply(self, ax):
+        return ax.quiver(*self.args, **self.kwargs)
+
+
+class Arrow(Artist):
+
+    def apply(self, ax):
+        arrow = FancyArrowPatch(**self.kwargs)
+        return ax.add_patch(arrow)
+
 '''
 e.g.
 

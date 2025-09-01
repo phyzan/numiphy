@@ -11,57 +11,6 @@ from abc import ABC, abstractmethod
 import math
 
 
-
-
-# class Vector2D:
-
-
-#     def __init__(self, x, y):
-#         self.x = float(x)
-#         self.y = float(y)
-
-#     def __neg__(self):
-#         return Vector2D(-self.x, -self.y)
-
-#     def __add__(self, other: Vector2D):
-#         return Vector2D(self.x+other.x, self.y+other.y)
-
-#     def __sub__(self, other: Vector2D):
-#         return Vector2D(self.x-other.x, self.y-other.y)
-
-#     def __mul__(self, other):
-#         if isinstance(other, (int, float)):
-#             return Vector2D(other*self.x, other*self.y)
-#         elif isinstance(other,Vector2D):
-#             return self.x*other.x + self.y*other.y
-#         else:
-#             raise ValueError(f"Cannot multiply Vector2D with object of type {other.__class__}")
-    
-#     def __rmul__(self, other):
-#         return self*other
-
-#     def norm(self):
-#         return math.sqrt(self.x**2+self.y**2)
-
-#     def unit(self):
-#         norm = self.norm()
-#         return Vector2D(self.x/norm, self.y/norm)
-
-#     def cross(self, other: Vector2D):
-#         return self.x*other.y - self.y*other.x
-    
-#     def cross_z(self):
-#         return Vector2D(self.y, -self.x)
-
-#     def toarray(self):
-#         return np.array([self.x, self.y])
-
-#     def __repr__(self):
-#         r = [self.x, self.y]
-#         r = [int(i) if int(i)==i else i for i in r]
-#         return '({0}, {1})'.format(*r)
-
-
 class GeomObject(ABC):
 
     nd: int
@@ -355,22 +304,3 @@ def Circle(r: float, center: tuple[float])->Line:
 
 def Square(a: float, start: tuple[float]):
     return Parallelogram(start[0], start[0]+a, start[1], start[1]+a)
-
-'''
-
-TODO:
-
-Everything returns a vector-like object:
-
-Vector1D inherits from vector and float
-Vector2D ready
-Vector3D do it
-VectorNd for higher dimensions
-
-
-.coords returns Vector
-.normal_vector returns Vector
-.tangent returns Vector
-
-
-'''
