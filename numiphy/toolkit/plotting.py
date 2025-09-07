@@ -3,6 +3,7 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import matplotlib.animation as mpl_anim
 from matplotlib.patches import FancyArrowPatch
+from matplotlib.collections import LineCollection
 from ..findiffs import grids
 import sys, os
 from ..toolkit import tools
@@ -412,6 +413,13 @@ class ErrorPlot(PointCollection):
         return ax.errorbar(self.xcoords, self.ycoords, **self.params)
 
 
+class LineCollectionPlot(Artist):
+
+    def apply(self, ax):
+        item = LineCollection(**self.kwargs)
+        ax.add_collection(item)
+
+
 class QuiverPlot(Artist):
 
     def __init__(self, x: np.ndarray, y: np.ndarray, X: np.ndarray, Y:np.ndarray, mag=None, **kwargs):
@@ -429,6 +437,51 @@ class Arrow(Artist):
     def apply(self, ax):
         arrow = FancyArrowPatch(**self.kwargs)
         return ax.add_patch(arrow)
+
+
+def gradient_line(x_array, y_array, cmap='coolwarm', linewidth=None, by_arclength=False):
+    """
+    Create a LineCollection for a line that gradually changes color.
+
+    Parameters
+    ----------
+    x_array, y_array : 1D arrays
+        Coordinates of the line.
+    cmap : str or Colormap, default 'coolwarm'
+        Colormap for the gradient (0=start, 1=end).
+    linewidth : float, default 2
+        Width of the line.
+    by_arclength : bool, default False
+        If True, color is parameterized by arc length instead of index.
+
+    Returns
+    -------
+    LineCollection
+        A matplotlib LineCollection that can be added to an axes.
+    """
+    x_array = np.asarray(x_array)
+    y_array = np.asarray(y_array)
+
+    points = np.array([x_array, y_array]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    if by_arclength:
+        dx = np.diff(x_array)
+        dy = np.diff(y_array)
+        s = np.concatenate([[0], np.cumsum(np.sqrt(dx**2 + dy**2))])
+        values = (s - s.min()) / (s.max() - s.min())
+    else:
+        values = np.linspace(0, 1, len(segments))
+
+    lc = LineCollectionPlot(
+        segments=segments,
+        cmap=cmap,
+        norm=plt.Normalize(0, 1),
+        array=values,
+        linewidths=linewidth
+    )
+    return lc
+
 
 '''
 e.g.

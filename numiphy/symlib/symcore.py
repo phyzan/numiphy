@@ -1948,9 +1948,9 @@ S = Singleton()
 def asexpr(arg)->Expr:
     if isinstance(arg, Expr):
         return arg
-    elif isinstance(arg, int):
+    elif isinstance(arg, (int, np.integer)):
         return Integer(int(arg))
-    elif isinstance(arg, float):
+    elif isinstance(arg, (float, np.floating)):
         if arg == int(arg):
             return Integer(int(arg))
         else:
