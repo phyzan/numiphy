@@ -188,6 +188,7 @@ class ConservativeVectorField2D(VectorField2D):
                 res[l] += (res_tmp,)
         return res
 
+
 def approach_point_event(name, x, y, x_point, y_point, dr, forwards_integration=True):
     direction = -1 if forwards_integration else 1
     return SymbolicEvent(name, (x-x_point)**2 + (y-y_point)**2 - dr**2, direction)

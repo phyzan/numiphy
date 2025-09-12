@@ -65,10 +65,10 @@ class Hashable(_HashableObject):
 class _HashableNdArray(_HashableObject):
 
     def __init__(self, array: np.ndarray):
-        self.array = array
+        self.array = array.copy()
 
     def __hash__(self):
-        return hash(self.array)
+        return hash((self.array.shape, str(self.array.dtype), self.array.tobytes()))
         
     def _compare(self, other: _HashableNdArray):
         if other.array is self.array:

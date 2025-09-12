@@ -1686,7 +1686,7 @@ class ScalarField(Function):
         if ndarray.shape != grid.shape:
             raise ValueError(f'Grid shape is {grid.shape} while field shape is {ndarray.shape}')
         if len(vars) != grid.nd:
-            raise ValueError(f'Grid shape is {grid.shape} while the given variables are {len(vars)} in total')
+            raise ValueError(f'Grid shape is {grid.shape} while the given variables are {len(vars)} in total: {", ".join([str(x) for x in vars])}')
         obj = Function.__new__(cls, name, *vars)
         obj._args = (ndarray, grid) + obj._args
         return obj
@@ -1824,7 +1824,7 @@ class DummyScalarField(ScalarField):
     def name(self):
         return "DummyField"
 
-    def init(self, arr: np.ndarray, grid: grids.Grid, *vars, simplify=True):
+    def init(self, arr: np.ndarray, grid: grids.Grid, name: str, *vars, simplify=True):
         return self.__class__(arr, grid, *vars)
     
     def _diff(self, var, acc=1, fd='central'):

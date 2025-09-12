@@ -414,7 +414,7 @@ class Grid1D(Grid):
 
     @property
     def hashable_content(self):
-        return (self.limits, self.n, self.periodic)
+        return (tuple([tuple(i) for i in self.limits]), self.n, self.periodic)
 
 
 class Uniform1D(Grid1D):

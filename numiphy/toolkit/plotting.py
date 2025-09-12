@@ -343,6 +343,9 @@ class Artist:
     @property
     def params(self):
         return self.kwargs.copy()
+    
+    def copy(self)->Artist:
+        return self.__class__(**self.kwargs)
 
 
 class PointCollection(Artist):
@@ -430,6 +433,9 @@ class QuiverPlot(Artist):
 
     def apply(self, ax):
         return ax.quiver(*self.args, **self.kwargs)
+    
+    def copy(self):
+        return QuiverPlot(*[arg.copy() if hasattr(arg, '__iter__') else arg for arg in self.args], **self.kwargs)
 
 
 class Arrow(Artist):
