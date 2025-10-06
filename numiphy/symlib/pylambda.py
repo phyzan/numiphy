@@ -13,7 +13,7 @@ class _CallableFunction:
         '''
         self._res: Expr|list[Expr]
         if hasattr(result, '__iter__'):
-            self._res = list(result)
+            self._res = [asexpr(i) for i in result]
         else:
             self._res = result
         self._map = {arg: arg for arg in args}

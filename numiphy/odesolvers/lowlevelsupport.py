@@ -28,6 +28,9 @@ class _LowLevelCallable(_CallableFunction):
     
     def lambda_code(self):
         return f'[]({self.argument_list()}) -> {self.return_id()} ' + '{' +f'{self.core_impl()}'+'}'
+    
+    def compile(self):
+        return compile_funcs([self])[0]
 
 
 class BooleanLowLevelCallable(_BooleanCallable, _LowLevelCallable):
@@ -65,6 +68,36 @@ class TensorLowLevelCallable(_TensorCallable, _LowLevelCallable):
     def argument_list(self):
         arglist = 'double* result, '+_CallableFunction.argument_list(self)
         return arglist
+    
+def generate_cpp_file(code, directory, module_name):
+    if not os.path.exists(directory):
+        raise RuntimeError(f'Directory "{directory}" does not exist')
+    cpp_file = os.path.join(directory, f"{module_name}.cpp")
+    with open(cpp_file, "w") as f:
+        f.write(code)
+    
+    return os.path.join(directory, f'{module_name}.cpp')
+    
+def compile_funcs(functions: Iterable[_LowLevelCallable])->tuple:
+    header = "#include <pybind11/pybind11.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
+
+    names = [f"_lowlevel_func_{i}" for i in range(len(functions))]
+
+    code_block = '\n\n'.join([f.code(name) for f, name in zip(functions, names)])
+
+    array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' for name in names])+")"
+
+    py_func = '\n\tm.def("pointers", [](){return '+array+';});'
+    module_name = f'_TMP_ODE_MODULE_{tools.random_module_name()}'
+    pybind_cond = f"PYBIND11_MODULE({module_name}, m)"+'{'+py_func+'\n}'
+    items = [header, code_block, pybind_cond]
+    code = "\n\n".join(items)
+    with tempfile.TemporaryDirectory() as so_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cpp_file = generate_cpp_file(code, temp_dir, module_name)
+            tools.compile(cpp_file, so_dir, module_name)
+        temp_module = tools.import_lowlevel_module(so_dir, module_name)
+    return temp_module.pointers()
 
 
 class SymbolicEvent:
