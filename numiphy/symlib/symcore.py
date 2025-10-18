@@ -1955,6 +1955,11 @@ def asexpr(arg)->Expr:
             return Integer(int(arg))
         else:
             return Float(float(arg))
+    elif isinstance(arg, (np.ndarray)):
+        if arg.ndim == 0:
+            return Float(float(arg))
+        else:
+            raise ValueError(f"The numpy array of shape {arg.shape} is incompatible with the Expr class")
     elif type(arg) is complex:
         return Complex(arg.real, arg.imag)
     else:
