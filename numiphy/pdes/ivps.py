@@ -5,7 +5,7 @@ from . import bounds
 from ..symlib.symcore import *
 from . import cached
 from ..toolkit import tools
-from .. import odesolvers as ods
+from .. import lowlevelsupport as ods
 from . import linalg
 import numpy as np
 from abc import ABC, abstractmethod
@@ -77,10 +77,11 @@ class IVP(ABC):
             x = res.t
             f = self.bcs.insert(res.y.T)
         else:
-            ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, acc=acc, fd=fd) for op in self.operators])
-            ode = ods.LowLevelODE(self.dfdt, t0=0, q0=q0, args=ops, mask=self.apply_bcs, **ode_args)
-            res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
-            x = res.t
+            pass
+            # ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, acc=acc, fd=fd) for op in self.operators])
+            # ode = ods.LowLevelODE(self.dfdt, t0=0, q0=q0, args=ops, mask=self.apply_bcs, **ode_args)
+            # res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
+            # x = res.t
                 
         return x, f.flatten().reshape((*self.grid.shape, x.shape[0]), order='F')
     
