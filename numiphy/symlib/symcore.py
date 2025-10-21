@@ -981,9 +981,9 @@ class Pow(Operation):
     def lowlevel_repr(self, scalar_type="double"):
         if isinstance(self.power, Integer):
             if self.power.value > 0:
-                return Mul(*self.power.value*[self.base], simplify=False).lowlevel_repr(scalar_type)
+                return '(' + Mul(*self.power.value*[self.base], simplify=False).lowlevel_repr(scalar_type) + ')'
             else:
-                return f'1/({Mul(*(-self.power.value)*[self.base], simplify=False).lowlevel_repr(scalar_type)})'
+                return f'({Integer(1).lowlevel_repr(scalar_type)}/({Mul(*(-self.power.value)*[self.base], simplify=False).lowlevel_repr(scalar_type)}))'
         return f"pow({self.base.lowlevel_repr(scalar_type)}, {self.power.lowlevel_repr(scalar_type)})"
     
     @property
@@ -1857,14 +1857,24 @@ class Piecewise(Expr):
     def __new__(cls, *cases: tuple[Expr, Boolean], simplify=True):
         newcases = []
         for case in cases:
-            assert isinstance(case[1], (Boolean, bool))
-            if case[1] is False:
+            cond = case[1]
+            if isinstance(cond, Integer):
+                if cond.value == 1:
+                    cond = True
+                elif cond.value == 0:
+                    cond = False
+                else:
+                    raise ValueError(f'If the second argument of a tuple in Piecewise is an Integer, it can only be 0 or 1, not {cond.value}')
+            elif not isinstance(cond, (Boolean, bool)):
+                raise NotImplementedError(f'The second argument of a tuple in the PieceWise class must be Boolean, not {cond.__class__}')
+            assert isinstance(cond, (Boolean, bool))
+            if cond is False:
                 continue
-            elif case[1] is True:
+            elif cond is True:
                 newcases.append((asexpr(case[0]), True))
                 break
             else:
-                newcases.append((asexpr(case[0]), case[1]))
+                newcases.append((asexpr(case[0]), cond))
         cases = tuple(newcases)
         assert cases[-1][1] is True
         
@@ -1912,8 +1922,9 @@ class Piecewise(Expr):
     
     def _elementwise_boolean(self, x: Dict[Symbol, np.ndarray], **kwargs)->tuple[np.ndarray,...]:
         res = []
-        for i in range(self.N):
+        for i in range(self.N-1):
             res.append(self.booleans[i].get_ndarray(x, **kwargs))
+        res.append(Integer(1).get_ndarray(x, **kwargs))
         return tuple(res)
     
     def repr(self, lib=""):
