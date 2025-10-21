@@ -979,6 +979,11 @@ class Pow(Operation):
             return super().repr(lib)
 
     def lowlevel_repr(self, scalar_type="double"):
+        if isinstance(self.power, Integer):
+            if self.power.value > 0:
+                return Mul(*self.power.value*[self.base], simplify=False).lowlevel_repr(scalar_type)
+            else:
+                return f'1/({Mul(*(-self.power.value)*[self.base], simplify=False).lowlevel_repr(scalar_type)})'
         return f"pow({self.base.lowlevel_repr(scalar_type)}, {self.power.lowlevel_repr(scalar_type)})"
     
     @property
