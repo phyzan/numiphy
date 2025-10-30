@@ -161,9 +161,10 @@ class Project:
     def fig_folder(self):
         return os.path.join(self.folder, 'figures')
     
-    def savefig(self, fig: Figure):
+    def savefig(self, fig: Figure, override_fig_params = True):
         fig = fig.copy()
-        fig.set(**self.figparams)
+        if override_fig_params:
+            fig.set(**self.figparams)
         fig.save(self.fig_folder)
         fig.savedata(self.data_folder)
 
@@ -258,7 +259,6 @@ class Figure:
 
     def save(self, folder):
         fig, ax = self.plot()
-
         fig_path = os.path.join(folder, f"{self.name}.{self.ftype}")
         fig.savefig(fig_path, bbox_inches='tight', dpi=self.dpi)
         plt.close()
