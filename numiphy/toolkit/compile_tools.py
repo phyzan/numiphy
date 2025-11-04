@@ -55,4 +55,4 @@ def random_module_name(length=8):
 
     while keyword.iskeyword(name):
         name = random_module_name(length)
-    return name    
+    return name

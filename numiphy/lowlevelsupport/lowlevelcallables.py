@@ -30,6 +30,9 @@ class LowLevelCallable(_CallableFunction):
     
     def compile(self):
         return compile_funcs([self])[0]
+    
+    def to_python_callable(self)->PythonCallable:
+        raise NotImplementedError('')
 
 
 class BooleanLowLevelCallable(_BooleanCallable, LowLevelCallable):
@@ -37,6 +40,11 @@ class BooleanLowLevelCallable(_BooleanCallable, LowLevelCallable):
     def core_impl(self):
         res = self.expr.varsub(self._map).lowlevel_repr("double")
         return f"return {res};"
+    
+    def to_python_callable(self):
+        p = self._constuctor_params
+        return BooleanPythonCallable(p[0], *p[1], **p[2])
+
 
 class ScalarLowLevelCallable(_ScalarCallable, LowLevelCallable):
 
@@ -46,6 +54,10 @@ class ScalarLowLevelCallable(_ScalarCallable, LowLevelCallable):
     
     def return_id(self):
         return 'double'
+    
+    def to_python_callable(self):
+        p = self._constuctor_params
+        return ScalarPythonCallable(p[0], *p[1], **p[2])
 
 
 class TensorLowLevelCallable(_TensorCallable, LowLevelCallable):
@@ -67,15 +79,17 @@ class TensorLowLevelCallable(_TensorCallable, LowLevelCallable):
     def argument_list(self):
         arglist = 'double* result, '+_CallableFunction.argument_list(self)
         return arglist
+    
+    def to_python_callable(self):
+        p = self._constuctor_params
+        return TensorPythonCallable(p[0], *p[1], **p[2])
 
 
 class CompileTemplate:
 
-    def __new__(cls, module_name: str = None, directory: str = None):
-        obj = object.__new__(cls)
-        obj.__module_name = module_name
-        obj.__directory = directory if directory is not None else tools.get_source_dir()
-        return obj
+    def __init__(self, module_name: str = None, directory: str = None):
+        self.__module_name = module_name
+        self.__directory = directory if directory is not None else tools.get_source_dir()
     
     @property
     def directory(self):
@@ -114,6 +128,9 @@ def generate_cpp_file(code, directory, module_name):
 
 
 def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None)->tuple[Pointer,...]:
+    none_modname = module_name is None
+    if (none_modname):
+        module_name = tools.random_module_name()
     header = "#include <pybind11/pybind11.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
 
     names = [f"_lowlevel_func_{i}" for i in range(len(functions))]
@@ -123,30 +140,19 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
     array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' if f is not None else 'nullptr' for f, name in zip(functions, names)])+")"
 
     py_func = '\n\tm.def("pointers", [](){return '+array+';});'
-    if module_name is None:
-        none_modname = True
-        module_name = f'_TMP_ODE_MODULE_{tools.random_module_name()}'
-    else:
-        none_modname = False
     pybind_cond = f"PYBIND11_MODULE({module_name}, m)"+'{'+py_func+'\n}'
     items = [header, code_block, pybind_cond]
     code = "\n\n".join(items)
-    if directory is None:
-        if none_modname:
-            with tempfile.TemporaryDirectory() as so_dir:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    cpp_file = generate_cpp_file(code, temp_dir, module_name)
-                    tools.compile(cpp_file, so_dir, module_name)
-                temp_module = tools.import_lowlevel_module(so_dir, module_name)
-        else:
-            so_dir = tools.get_source_dir()
+    if none_modname:
+        with tempfile.TemporaryDirectory() as so_dir:
             with tempfile.TemporaryDirectory() as temp_dir:
                 cpp_file = generate_cpp_file(code, temp_dir, module_name)
                 tools.compile(cpp_file, so_dir, module_name)
             temp_module = tools.import_lowlevel_module(so_dir, module_name)
     else:
+        so_dir = directory if directory is not None else tools.get_source_dir()
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = generate_cpp_file(code, temp_dir, module_name)
-            tools.compile(cpp_file, directory, module_name)
-        temp_module = tools.import_lowlevel_module(directory, module_name)
+            tools.compile(cpp_file, so_dir, module_name)
+        temp_module = tools.import_lowlevel_module(so_dir, module_name)
     return temp_module.pointers()

@@ -31,6 +31,7 @@ class _CallableFunction:
                 self._is_array.update({x.name: True})
         
         self._arg_symbols = tuple(self._arg_symbols)
+        self._constuctor_params = (result, args, kwargs)
 
     def argument_list(self):
         arglist = [self.scalar_id(x.name) for x in self._arg_symbols]
@@ -69,6 +70,7 @@ class _TensorCallable(_CallableFunction):
         arr = np.array(array, dtype=object)
         self.shape = arr.shape
         _CallableFunction.__init__(self, arr.flatten().tolist(), *args, **kwargs)
+        self._constuctor_params = (array, args, kwargs)
     
     @property
     def array(self)->list[Expr]:
@@ -79,7 +81,7 @@ class _TensorCallable(_CallableFunction):
         return np.array([arg.varsub(self._map) for arg in self.array], dtype=object).reshape(self.shape).tolist()
 
 
-class _PythonCallable(_CallableFunction):
+class PythonCallable(_CallableFunction):
 
     def scalar_id(self, scalar_name):
         return f'{scalar_name}'
@@ -96,32 +98,36 @@ class _PythonCallable(_CallableFunction):
     def lambda_code(self, lib: str):
         return f'lambda {self.argument_list()}: {self.core_impl(lib)}'
     
+    def lambdify(self, lib='numpy'):
+        code = self.code("MyFunc", lib=lib)
+        glob_vars = {"numpy": np, "math": math, "cmath": cmath}
+        exec(code, glob_vars)
+        return glob_vars['MyFunc']
+    
     def core_impl(self, lib: str)->str:...
     
 
-class BooleanPythonCallable(_BooleanCallable, _PythonCallable):
+class BooleanPythonCallable(_BooleanCallable, PythonCallable):
 
     def core_impl(self, lib: str):
         res = self.expr.varsub(self._map).repr(lib=lib)
         return f"return {res}"
 
 
-class ScalarPythonCallable(_ScalarCallable, _PythonCallable):
+class ScalarPythonCallable(_ScalarCallable, PythonCallable):
 
     def core_impl(self, lib: str):
         res = self.expr.varsub(self._map).repr(lib=lib)
         return f"return {res}"
 
 
-class TensorPythonCallable(_TensorCallable, _PythonCallable):
+class TensorPythonCallable(_TensorCallable, PythonCallable):
 
     def return_id(self):
         return f"numpy.ndarray[float]"
 
     def core_impl(self, lib: str):
         return f"return numpy.array({_multidim_lambda_list(self.new_array, lib=lib)})"
-
-
 
 
 def _multidim_lambda_list(arg, lib: str):
@@ -141,10 +147,7 @@ def lambdify(arg, lib: str, *args: Symbol, **kwargs: Iterable[Symbol])->Callable
     else:
         r = ScalarPythonCallable(arg, *args, **kwargs)
 
-    code = r.code("MyFunc", lib=lib)
-    glob_vars = {"numpy": np, "math": math, "cmath": cmath}
-    exec(code, glob_vars)
-    return glob_vars['MyFunc']
+    return r.lambdify(lib=lib)
 
 
 class ScalarLambdaExpr:
