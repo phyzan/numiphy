@@ -1806,12 +1806,12 @@ class ScalarField(Function):
         
         return self.init(self.ndarray(self.variables, grid=grid), grid, *self.args[2:])
 
-    def plot(self, grid: grids.Grid=None, acc=1, fd='central', ax=None, **kwargs):
-        if varorder is None:
-            varorder = list(self.variables)
+    def plot(self, symbols:tuple[Symbol] = None, grid: grids.Grid=None, acc=1, fd='central', ax=None, **kwargs):
+        if symbols is None:
+            symbols = list(self.variables)
         if grid is None:
             grid = self.grid
-        return Expr.plot(self, grid, acc=acc, fd=fd, ax=ax, **kwargs)
+        return Expr.plot(self, symbols=symbols, grid=grid, acc=acc, fd=fd, ax=ax, **kwargs)
     
     def _subs(self, vals):
         return Subs(self, vals)

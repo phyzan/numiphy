@@ -80,7 +80,7 @@ class IVP(ABC):
             pass
             # ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, acc=acc, fd=fd) for op in self.operators])
             # ode = ods.LowLevelODE(self.dfdt, t0=0, q0=q0, args=ops, mask=self.apply_bcs, **ode_args)
-            # res = ode.integrate(t, max_frames=ode_args.get("max_frames", -1), max_prints=ode_args.get("max_prints", 0), include_first=True)
+            # res = ode.integrate(t, t_eval=ode_args.get("t_eval", []), max_prints=ode_args.get("max_prints", 0), include_first=True)
             # x = res.t
                 
         return x, f.flatten().reshape((*self.grid.shape, x.shape[0]), order='F')
@@ -220,13 +220,13 @@ class IVPsystem2D(ABC):
         f0[1, :] = self.bcs2.discretize(self.v0, 0)
         ops = tuple([cached.cache_operator(op, op.oper_symbols, self.grid, acc=acc, fd=fd) for op in self.operators])
 
-        max_frames=ode_args.pop("max_frames", -1)
+        t_eval=ode_args.pop("t_eval", [])
         max_prints=ode_args.pop("max_prints", 0)
         max_events = ode_args.pop("max_events", 0)
         # ode = ods.LowLevelODE(self.dfdt, 0, f0, mask=self.apply_bcs, args=ops, **ode_args)
         from scipy.integrate import solve_ivp
         res = solve_ivp(lambda t, f, *ops: self.dfdt(t, f.reshape(f0.shape), *ops).flatten(), (0, t), f0.flatten(), args=ops, vectorized=True,**ode_args)
-        # res = ode.integrate(t, max_frames=max_frames, max_prints=max_prints, max_events=max_events, include_first=True)
+        # res = ode.integrate(t, t_eval=t_eval, max_prints=max_prints, max_events=max_events, include_first=True)
         x, f = res.t, res.y.reshape((*f0.shape, res.y.shape[-1]))
         f = f.swapaxes(0, 2).swapaxes(1, 2)
         u = f[:, 0, :]

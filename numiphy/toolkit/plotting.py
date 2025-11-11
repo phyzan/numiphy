@@ -30,11 +30,9 @@ def plot(arr: np.ndarray, grid: grids.Grid, ax=None, **kwargs):
         ax.plot(*x, arr, **kwargs)
         return fig_ax
     elif arr.ndim == 2:
-        ax.pcolormesh(*x, arr, **kwargs)
+        mesh = ax.pcolormesh(*x, arr, **kwargs)
         norm = plt.Normalize(arr.min(), arr.max())
-        sm = cm.ScalarMappable(norm=norm)
-        sm.set_array([])
-        cbar = plt.colorbar(sm, ax=ax)
+        cbar = plt.colorbar(mesh, ax=ax)
         return *fig_ax, cbar
     else:
         raise NotImplementedError('3D plotting not implemented')
