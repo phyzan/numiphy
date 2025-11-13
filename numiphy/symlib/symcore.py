@@ -226,8 +226,8 @@ class Expr:
     def is_const_wrt(self, x: Symbol):
         return x not in self.variables
     
-    def lambdify(self, *symbols: Symbol, lib = "math"):
-        return lambdify(self, lib, *symbols)
+    def lambdify(self, *symbols: Symbol, lib = "math", **kwargs):
+        return lambdify(self, lib, *symbols, **kwargs)
 
     def powsimp(self):
         return powsimp(self)
@@ -581,6 +581,7 @@ class Atom(Expr):
 class Operation(Expr):
 
     binary: str
+    torch_binary: str
     _args: tuple[Expr, ...]
 
     def __new__(cls, *args: Expr, simplify=True):
@@ -604,7 +605,13 @@ class Operation(Expr):
     def matheval(cls, a, b):
         raise NotImplementedError('')
     
-    def repr(self, lib = ""):
+    def repr(self, lib = "", **kwargs)->str:
+        if lib == 'torch' and kwargs.get('out', False):
+            if len(self.args) == 2 and not (self._args[0].isNumber and self._args[1].isNumber):
+                return f'torch.{self.torch_binary}({self._args[0].repr(lib, **kwargs)}, {self._args[1].repr(lib, **kwargs)}, out=out)'
+            elif len(self.args) > 2:
+                return self.__class__(self.__class__(*self.args[:2], simplify=False), *self.args[2:], simplify=False).repr(lib, **kwargs)
+
         return self.binary.join([f._repr_from(lib, self.__class__) for f in self._args])
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -631,6 +638,7 @@ class Operation(Expr):
 class Add(Operation):
 
     _repr_priority = 0
+    torch_binary = 'add'
     binary = '+'
     _priority = 0
 
@@ -709,7 +717,9 @@ class Add(Operation):
                 res += ' + ' + getattr(arg, func)(_arg)
         return res
     
-    def repr(self, lib = ""):
+    def repr(self, lib = "", **kwargs)->str:
+        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', False):
+            return super().repr(lib, **kwargs)
         return self._remove_minus("repr", lib)
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -728,6 +738,7 @@ class Add(Operation):
 class Mul(Operation):
 
     _repr_priority = 1
+    torch_binary = 'mul'
     binary = '*'
     _priority = 1
 
@@ -910,7 +921,9 @@ class Mul(Operation):
             s = '-'+s[4:]
         return s
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
+        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', False):
+            return super().repr(lib, **kwargs)
         return self._remove_one("repr", lib)
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -937,6 +950,7 @@ class Mul(Operation):
 class Pow(Operation):
 
     _repr_priority = 2
+    torch_binary = 'pow'
     binary = '**'
     _priority = 2
 
@@ -972,11 +986,13 @@ class Pow(Operation):
         else:
             return a, b
     
-    def repr(self, lib = ""):
-        if self.base.repr_priority == self.repr_priority:
+    def repr(self, lib = "", **kwargs):
+        if lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+            return super().repr(lib, **kwargs)
+        elif self.base.repr_priority == self.repr_priority:
             return f'({self.base._repr_from(lib, Pow)})**{self.power._repr_from(lib, Pow)}'
         else:
-            return super().repr(lib)
+            return super().repr(lib, **kwargs)
 
     def lowlevel_repr(self, scalar_type="double"):
         if isinstance(self.power, Integer):
@@ -1059,7 +1075,7 @@ class Function(Expr):
     def nd(self):
         return (len(self._args)-1) // 2
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib != '':
             raise NotImplementedError('Function objects do not support representation with an external library')
         else:
@@ -1124,7 +1140,7 @@ class Float(Number):
         else:
             return self.__class__._repr_priority
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         return str(self.value)
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -1168,7 +1184,7 @@ class Rational(Number):
         else:
             return self.__class__._repr_priority
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         return f'{self.n}/{self.d}'
         
     def lowlevel_repr(self, scalar_type="double"):
@@ -1193,7 +1209,7 @@ class Integer(Rational):
     def __new__(cls, m):
         return Rational.__new__(cls, m, 1)
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         return f'{self.value}'
 
     def lowlevel_repr(self, scalar_type="double"):
@@ -1228,7 +1244,7 @@ class Special(Number):
     def value(self)->float:
         return self._args[0]
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib == '':
             return self.name
         else:
@@ -1266,7 +1282,7 @@ class Complex(Number):
     def value(self)->complex:
         return self.real + 1j*self.imag
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if self.real == 0:
             return f'{self.imag}j'
         else:
@@ -1313,7 +1329,7 @@ class Symbol(Atom):
     def to_dummy(self):
         return Dummy(self.name)
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         return self.name
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -1404,7 +1420,7 @@ class Subs(Expr):
         subs_data = {args[1+i]: args[1+i+n] for i in range(n)}
         return self.init(args[0], *subs_data, simplify=simplify)
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib != '':
             raise NotImplementedError()
         else:
@@ -1483,7 +1499,7 @@ class Derivative(Expr):
     def neg(self):
         return self.init(-self.f, *self.diff_symbols)
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated derivatives')
         else:
@@ -1646,7 +1662,7 @@ class Integral(Expr):
     def neg(self):
         return self.init(-self.f, self.symbol, *self.limits)
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated integrals')
         else:
@@ -1927,13 +1943,15 @@ class Piecewise(Expr):
         res.append(Integer(1).get_ndarray(x, **kwargs))
         return tuple(res)
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib == '':
             return f"{self.__class__.__name__}({', '.join([f'({self.expressions[i]}, {self.booleans[i]})' for i in range(self.N)])})"
         elif lib == 'numpy':
-            return f'numpy.where({self.booleans[0].repr(lib)}, {self.expressions[0].repr(lib)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib)})'
+            return f'numpy.where({self.booleans[0].repr(lib, **kwargs)}, {self.expressions[0].repr(lib, **kwargs)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)})'
+        elif lib == 'torch':
+            return f'torch.where({self.booleans[0].repr(lib, **kwargs)}, {self.expressions[0].repr(lib, **kwargs)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)}, out={'None' if self.isNumber else 'out'})'
         else:
-            return f'({self.expressions[0].repr(lib)} if {self.booleans[0].repr(lib)} else ({self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib)}))'
+            return f'({self.expressions[0].repr(lib, **kwargs)} if {self.booleans[0].repr(lib, **kwargs)} else ({self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)}))'
 
     def lowlevel_repr(self, scalar_type="double"):
         return f"(({self.booleans[0].lowlevel_repr(scalar_type)}) ? {self.expressions[0].lowlevel_repr(scalar_type)} : {self.init(*self.expressions[1:], *self.booleans[1:]).lowlevel_repr(scalar_type)})"

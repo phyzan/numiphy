@@ -24,11 +24,15 @@ class Mathfunc(Expr):
         else:
             return getattr(math, cls.name)(value)
 
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib == '':
-            return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
-        
-        base = f"{self.name}({self.Arg.repr(lib)})"
+            return f'{self.__class__.__name__}({self.Arg.repr(lib, **kwargs)})'
+        elif lib == 'torch':
+            if self.isNumber:
+                lib = "math"
+            else:
+                return f'torch.{self.name}({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
+        base = f"{self.name}({self.Arg.repr(lib, **kwargs)})"
         if lib == 'math' and self.contains_type(Complex):
             return 'cmath.'+base
         else:
@@ -207,8 +211,13 @@ class Abs(Mathfunc):
     def _diff(self, var):
         return Derivative(self, var)
 
-    def repr(self, lib=""):
-        return f'abs({self.Arg.repr(lib)})'
+    def repr(self, lib="", **kwargs):
+        if lib == 'torch':
+            if self.isNumber:
+                lib = "math"
+            else:
+                return f'torch.abs({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
+        return f'abs({self.Arg.repr(lib, **kwargs)})'
 
     @classmethod
     def eval_at(cls, value):
@@ -233,11 +242,16 @@ class Real(Mathfunc):
     def is_complex(self):
         return False
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib != '':
-            return f'({self.Arg.repr(lib)}).real'
+            return f'({self.Arg.repr(lib, **kwargs)}).real'
+        elif lib == 'torch':
+            if self.isNumber:
+                lib = "math"
+            else:
+                return f'torch.real({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
         else:
-            return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
+            return f'{self.__class__.__name__}({self.Arg.repr(lib, **kwargs)})'
         
     def _diff(self, var):
         return self.init(self.Arg._diff(var))
@@ -265,11 +279,16 @@ class Imag(Mathfunc):
     def is_complex(self):
         return False
     
-    def repr(self, lib=""):
+    def repr(self, lib="", **kwargs):
         if lib != '':
-            return f'({self.Arg.repr(lib)}).imag'
+            return f'({self.Arg.repr(lib, **kwargs)}).imag'
+        elif lib == 'torch':
+            if self.isNumber:
+                lib = "math"
+            else:
+                return f'torch.imag({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
         else:
-            return f'{self.__class__.__name__}({self.Arg.repr(lib)})'
+            return f'{self.__class__.__name__}({self.Arg.repr(lib, **kwargs)})'
         
     def _diff(self, var):
         return self.init(self.Arg._diff(var))

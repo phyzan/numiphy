@@ -5,11 +5,13 @@ from typing import Dict
 import numpy as np
 from typing import Callable
 import numpy.typing as npt
+import torch
 
 
 class Boolean(Expr):
 
     operator: str
+    torch_repr: str
 
     def __and__(self, other: Boolean):
         return And(self, other)
@@ -32,7 +34,6 @@ class Boolean(Expr):
 
 class Comparison(Boolean):
 
-
     def __new__(cls, a, b, simplify=True):
         a, b = asexpr(a), asexpr(b)
         if isinstance(a, Number) and isinstance(b, Number):
@@ -48,13 +49,15 @@ class Comparison(Boolean):
     def b(self)->Expr:
         return self.args[1]
 
-    def repr(self, lib="")->str:
+    def repr(self, lib="", **kwargs)->str:
         if lib == '':
             if isinstance(self, (Eq, Neq)):
                 return f'{self.__class__.__name__}({self.a}, {self.b})'
             else:
                 return f'({self.a} {self.operator} {self.b})'
-        return f'({self.a.repr(lib)} {self.operator} {self.b.repr(lib)})'
+        elif lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+            return f'torch.{self.torch_repr}({self.a.repr(lib, **kwargs)}, {self.b.repr(lib, **kwargs)}, out=out)'
+        return f'({self.a.repr(lib, **kwargs)} {self.operator} {self.b.repr(lib, **kwargs)})'
 
     def lowlevel_repr(self, scalar_type="double"):
         return f'({self.a.lowlevel_repr(scalar_type)} {self.operator} {self.b.lowlevel_repr(scalar_type)})'
@@ -101,8 +104,10 @@ class Logical(Boolean):
     def right(self)->Boolean:
         return self.args[1]
     
-    def repr(self, lib=""):
-        return f'(({self.left.repr(lib)}) {self.operator} ({self.right.repr(lib)}))'
+    def repr(self, lib="", **kwargs):
+        if lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+            return f'torch.{self.torch_repr}({self.left.repr(lib, **kwargs)}, {self.right.repr(lib, **kwargs)}, out=out)'
+        return f'(({self.left.repr(lib, **kwargs)}) {self.operator} ({self.right.repr(lib, **kwargs)}))'
     
     def lowlevel_repr(self, scalar_type="double"):
         return f'(({self.left.lowlevel_repr(scalar_type)}) {self.cpp_op} ({self.right.lowlevel_repr(scalar_type)}))'
@@ -124,6 +129,7 @@ class Logical(Boolean):
 class Not(Boolean):
 
     operator = '~'
+    torch_repr = 'logical_not'
     _priority = 17
 
     def __new__(cls, arg: Boolean, simplify=True):
@@ -137,8 +143,10 @@ class Not(Boolean):
     def arg(self)->Boolean:
         return self._args[0]
 
-    def repr(self, lib=""):
-        return f'({self.operator} ({self.arg.repr(lib)}))'
+    def repr(self, lib="", **kwargs):
+        if lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+            return f'torch.{self.torch_repr}({self.arg.repr(lib, **kwargs)}, out=out)'
+        return f'({self.operator} ({self.arg.repr(lib, **kwargs)}))'
     
     def lowlevel_repr(self, scalar_type="double"):
         return f'!({self.arg.lowlevel_repr(scalar_type)})'
@@ -158,6 +166,7 @@ class Not(Boolean):
 class Gt(Comparison):
 
     operator = '>'
+    torch_repr = 'gt'
     _priority = 18
 
     @classmethod
@@ -168,6 +177,7 @@ class Gt(Comparison):
 class Lt(Comparison):
 
     operator = '<'
+    torch_repr = 'lt'
     _priority = 19
 
     @classmethod
@@ -178,6 +188,7 @@ class Lt(Comparison):
 class Ge(Comparison):
 
     operator = '>='
+    torch_repr = 'ge'
     _priority = 20
 
     @classmethod
@@ -188,6 +199,7 @@ class Ge(Comparison):
 class Le(Comparison):
 
     operator = '<='
+    torch_repr = 'le'
     _priority = 21
 
     @classmethod
@@ -198,6 +210,7 @@ class Le(Comparison):
 class Eq(Comparison):
 
     operator = '=='
+    torch_repr = 'eq'
     _priority = 22
 
     @classmethod
@@ -208,6 +221,7 @@ class Eq(Comparison):
 class Neq(Comparison):
 
     operator = '!='
+    torch_repr = 'ne'
     _priority = 23
 
     @classmethod
@@ -219,6 +233,7 @@ class And(Logical):
 
     cpp_op = '&&'
     operator = '&'
+    torch_repr = 'logical_and'
     np_logical = np.logical_and
     _priority = 24
 
@@ -240,6 +255,7 @@ class Or(Logical):
 
     cpp_op = '||'
     operator = '|'
+    torch_repr = 'logical_or'
     np_logical = np.logical_or
     _priority = 25
 

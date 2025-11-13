@@ -3,7 +3,7 @@ import numpy as np
 import math, cmath
 from .boolean import Boolean
 from typing import Iterable, Callable
-
+import torch
 
 class _CallableFunction:
 
@@ -92,32 +92,44 @@ class PythonCallable(_CallableFunction):
     def _code(self, name, return_type, arg_list, code_impl):
         return f"def {name}({arg_list})->{return_type}:\n\t{code_impl}"
     
-    def code(self, name: str, lib: str):
-        return self._code(name, self.return_id(), self.argument_list(), self.core_impl(lib))
+    def argument_list(self, **extra_args):
+        arglist = [self.scalar_id(x.name) for x in self._arg_symbols] + [f'{arg}={val}' for arg, val in extra_args.items()]
+        return ', '.join(arglist)
     
-    def lambda_code(self, lib: str):
-        return f'lambda {self.argument_list()}: {self.core_impl(lib)}'
+    def code(self, name: str, lib: str, **kwargs):
+        if lib == 'torch':
+            extra_args = dict(out=None)
+        else:
+            extra_args = dict()
+        return self._code(name, self.return_id(), self.argument_list(**extra_args), self.core_impl(lib, **kwargs))
     
-    def lambdify(self, lib='numpy'):
-        code = self.code("MyFunc", lib=lib)
-        glob_vars = {"numpy": np, "math": math, "cmath": cmath}
+    def lambda_code(self, lib: str, **kwargs):
+        if lib == 'torch':
+            extra_args = dict(out=None)
+        else:
+            extra_args = dict()
+        return f'lambda {self.argument_list(**extra_args)}: {self.core_impl(lib, **kwargs)}'
+    
+    def lambdify(self, lib='numpy', **kwargs):
+        code = self.code("MyFunc", lib=lib, **kwargs)
+        glob_vars = {"numpy": np, "math": math, "cmath": cmath, "torch": torch}
         exec(code, glob_vars)
         return glob_vars['MyFunc']
     
-    def core_impl(self, lib: str)->str:...
+    def core_impl(self, lib: str, **kwargs)->str:...
     
 
 class BooleanPythonCallable(_BooleanCallable, PythonCallable):
 
-    def core_impl(self, lib: str):
-        res = self.expr.varsub(self._map).repr(lib=lib)
+    def core_impl(self, lib: str, **kwargs):
+        res = self.expr.varsub(self._map).repr(lib=lib, **kwargs)
         return f"return {res}"
 
 
 class ScalarPythonCallable(_ScalarCallable, PythonCallable):
 
-    def core_impl(self, lib: str):
-        res = self.expr.varsub(self._map).repr(lib=lib)
+    def core_impl(self, lib: str, **kwargs):
+        res = self.expr.varsub(self._map).repr(lib=lib, **kwargs)
         return f"return {res}"
 
 
@@ -126,7 +138,9 @@ class TensorPythonCallable(_TensorCallable, PythonCallable):
     def return_id(self):
         return f"numpy.ndarray[float]"
 
-    def core_impl(self, lib: str):
+    def core_impl(self, lib: str, **kwargs):
+        if (lib == 'torch'):
+            raise NotImplementedError("Torch lambdifying for tensor functions not implemented yet")
         return f"return numpy.array({_multidim_lambda_list(self.new_array, lib=lib)})"
 
 
@@ -138,7 +152,7 @@ def _multidim_lambda_list(arg, lib: str):
     else:
         raise ValueError(f"Item of type '{arg.__class__}' not supported for lambdifying")
 
-def lambdify(arg, lib: str, *args: Symbol, **kwargs: Iterable[Symbol])->Callable:
+def lambdify(arg, lib: str, *args: Symbol, out=False, **kwargs: Iterable[Symbol])->Callable:
 
     if hasattr(arg, '__iter__'):
         r = TensorPythonCallable(arg, *args, **kwargs)
@@ -147,7 +161,7 @@ def lambdify(arg, lib: str, *args: Symbol, **kwargs: Iterable[Symbol])->Callable
     else:
         r = ScalarPythonCallable(arg, *args, **kwargs)
 
-    return r.lambdify(lib=lib)
+    return r.lambdify(lib=lib, out=out)
 
 
 class ScalarLambdaExpr:
