@@ -28,8 +28,8 @@ class LowLevelCallable(_CallableFunction):
     def lambda_code(self):
         return f'[]({self.argument_list()}) -> {self.return_id()} ' + '{' +f'{self.core_impl()}'+'}'
     
-    def compile(self):
-        return compile_funcs([self])[0]
+    def compile(self, directory: str = None, module_name: str = None)->Pointer:
+        return compile_funcs([self], directory=directory, module_name=module_name)[0]
     
     def to_python_callable(self)->PythonCallable:
         raise NotImplementedError('')
