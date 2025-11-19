@@ -106,15 +106,35 @@ class CompileTemplate:
         '''
         raise NotImplementedError('')
     
+    @cached_property
+    def _code(self):
+        names = [f'f_{i}' for i in range(len(self.lowlevel_callables))]
+        return '\n\n'.join([g.code(name) if g is not None else '' for g, name in zip(self.lowlevel_callables, names)])
+    
+    @property
+    def _funcs_path(self):
+        return os.path.join(self.directory, f"ode_callables.txt")
+    
     def compile(self)->tuple:
-        return compile_funcs(self.lowlevel_callables, self.directory, self.module_name)
+        result = compile_funcs(self.lowlevel_callables, self.directory, self.module_name)
+        with open(self._funcs_path, "w") as f:
+            f.write(self._code)
+        return result
     
     @cached_property
     def pointers(self)->tuple[Pointer,...]:
-        try:
-            return tools.import_lowlevel_module(self.directory, self.module_name).pointers()
-        except:
-            return self.compile()
+        if os.path.exists(self._funcs_path):
+            try:
+                with open(self._funcs_path, "r") as f:
+                    saved_code = f.read()
+                
+                if saved_code == self._code:
+                    # Callables match, try to import the module without recompiling
+                    return tools.import_lowlevel_module(self.directory, self.module_name).pointers()
+            except:
+                pass
+        # If no match or error, recompile
+        return self.compile()
 
 
 def generate_cpp_file(code, directory, module_name):
