@@ -166,7 +166,7 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
     none_modname = module_name is None
     if (none_modname):
         module_name = tools.random_module_name()
-    header = "#include <pybind11/pybind11.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
+    header = "#include <pybind11/pybind11.h>\n\n#include <mpreal.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
 
     names = [f"_lowlevel_func_{i}" for i in range(len(functions))]
 
