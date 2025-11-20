@@ -8,16 +8,21 @@ import tempfile
 from ..symlib.pylambda import _CallableFunction, _BooleanCallable, _ScalarCallable, _TensorCallable
 
 Pointer: TypeAlias = Any
+DEFAULT_SCALAR_TYPE = "double"
 
 class LowLevelCallable(_CallableFunction):
+
+    def __init__(self, result, *args, scalar_type = DEFAULT_SCALAR_TYPE, **kwargs):
+        self._scalar_type = scalar_type
+        super().__init__(result, *args, **kwargs)
 
     def core_impl(self)->str:...
 
     def scalar_id(self, scalar_name):
         if (self._is_array[scalar_name]):
-            return f'const double* {scalar_name}'
+            return f'const {self._scalar_type}* {scalar_name}'
         else:
-            return f'const double& {scalar_name}'
+            return f'const {self._scalar_type}& {scalar_name}'
     
     def _code(self, name, return_type, arg_list, code_impl):
         return f'{return_type} {name}({arg_list})'+'{\n'+code_impl+'\n}'
@@ -35,32 +40,42 @@ class LowLevelCallable(_CallableFunction):
         raise NotImplementedError('')
 
 
-class BooleanLowLevelCallable(_BooleanCallable, LowLevelCallable):
+class BooleanLowLevelCallable(LowLevelCallable, _BooleanCallable):
+
+    def __init__(self, expr: Boolean, *args: Symbol, scalar_type = DEFAULT_SCALAR_TYPE, **kwargs: Symbol|Iterable[Symbol]):
+        LowLevelCallable.__init__(self, expr, *args, scalar_type=scalar_type, **kwargs)
 
     def core_impl(self):
-        res = self.expr.varsub(self._map).lowlevel_repr("double")
+        res = self.expr.varsub(self._map).lowlevel_repr(self._scalar_type)
         return f"return {res};"
     
     def to_python_callable(self):
-        p = self._constuctor_params
+        p = self._constructor_params
         return BooleanPythonCallable(p[0], *p[1], **p[2])
 
 
-class ScalarLowLevelCallable(_ScalarCallable, LowLevelCallable):
+class ScalarLowLevelCallable(LowLevelCallable, _ScalarCallable):
+
+    def __init__(self, expr: Expr, *args: Symbol, scalar_type = DEFAULT_SCALAR_TYPE, **kwargs: Symbol|Iterable[Symbol]):
+        LowLevelCallable.__init__(self, expr, *args, scalar_type=scalar_type, **kwargs)
 
     def core_impl(self):
-        res = self.expr.varsub(self._map).lowlevel_repr("double")
+        res = self.expr.varsub(self._map).lowlevel_repr(self._scalar_type)
         return f"return {res};"
     
     def return_id(self):
-        return 'double'
+        return self._scalar_type
     
     def to_python_callable(self):
-        p = self._constuctor_params
+        p = self._constructor_params
         return ScalarPythonCallable(p[0], *p[1], **p[2])
 
 
-class TensorLowLevelCallable(_TensorCallable, LowLevelCallable):
+class TensorLowLevelCallable(LowLevelCallable, _TensorCallable):
+
+    def __init__(self, array: Iterable, *args: Symbol, scalar_type = DEFAULT_SCALAR_TYPE, **kwargs: Symbol|Iterable[Symbol]):
+        self._scalar_type = scalar_type
+        _TensorCallable.__init__(self, array, *args, **kwargs)
 
     @property
     def new_array(self)->list[Expr]:
@@ -71,17 +86,17 @@ class TensorLowLevelCallable(_TensorCallable, LowLevelCallable):
     
     def core_impl(self):
         res = self.new_array
-        return '\n'.join([f'result[{i}] = {res[i].lowlevel_repr("double")};' for i in range(len(res))])
+        return '\n'.join([f'result[{i}] = {res[i].lowlevel_repr(self._scalar_type)};' for i in range(len(res))])
 
     def lambda_code(self):
-        return f'[](double* result, {self.argument_list()})' + '{' +f'{self.core_impl()}'+'}'
+        return f'[]({self._scalar_type}* result, {self.argument_list()})' + '{' +f'{self.core_impl()}'+'}'
 
     def argument_list(self):
-        arglist = 'double* result, '+_CallableFunction.argument_list(self)
+        arglist = f'{self._scalar_type}* result, '+_CallableFunction.argument_list(self)
         return arglist
     
     def to_python_callable(self):
-        p = self._constuctor_params
+        p = self._constructor_params
         return TensorPythonCallable(p[0], *p[1], **p[2])
 
 

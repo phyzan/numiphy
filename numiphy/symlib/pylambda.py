@@ -31,7 +31,7 @@ class _CallableFunction:
                 self._is_array.update({x.name: True})
         
         self._arg_symbols = tuple(self._arg_symbols)
-        self._constuctor_params = (result, args, kwargs)
+        self._constructor_params = (result, args, kwargs)
 
     def argument_list(self):
         arglist = [self.scalar_id(x.name) for x in self._arg_symbols]
@@ -70,7 +70,7 @@ class _TensorCallable(_CallableFunction):
         arr = np.array(array, dtype=object)
         self.shape = arr.shape
         _CallableFunction.__init__(self, arr.flatten().tolist(), *args, **kwargs)
-        self._constuctor_params = (array, args, kwargs)
+        self._constructor_params = (array, args, kwargs)
     
     @property
     def array(self)->list[Expr]:
