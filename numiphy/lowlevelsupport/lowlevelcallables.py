@@ -105,6 +105,7 @@ class CompileTemplate:
     def __init__(self, module_name: str = None, directory: str = None):
         self.__module_name = module_name
         self.__directory = directory if directory is not None else tools.get_source_dir()
+        self.__nan_dir = directory is None
     
     @property
     def directory(self):
@@ -128,12 +129,13 @@ class CompileTemplate:
     
     @property
     def _funcs_path(self):
-        return os.path.join(self.directory, f"ode_callables.txt")
+        return os.path.join(self.directory, f"ode_callables.cpp")
     
     def compile(self)->tuple:
+        if not self.__nan_dir:
+            with open(self._funcs_path, "w") as f:
+                f.write(self._code)
         result = compile_funcs(self.lowlevel_callables, self.directory, self.module_name)
-        with open(self._funcs_path, "w") as f:
-            f.write(self._code)
         return result
     
     @cached_property
