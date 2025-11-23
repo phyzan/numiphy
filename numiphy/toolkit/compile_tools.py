@@ -7,7 +7,7 @@ import sysconfig
 import sys
 
 
-def compile(cpp_path, so_dir, module_name, no_math_errno=True, no_math_trap=False, fast_math=False):
+def compile(cpp_path, so_dir, module_name, no_math_errno=True, no_math_trap=True, fast_math=False):
     if not os.path.exists(cpp_path):
         raise RuntimeError(f"CPP file path does not exist: {cpp_path}")
     
@@ -38,7 +38,7 @@ def compile(cpp_path, so_dir, module_name, no_math_errno=True, no_math_trap=Fals
     
     # Compile command
     compile_comm = (
-        f"g++ -O3{errno_flag}{no_trap_flag}{fm_flag} -Wall -shared -march=x86-64 -std=c++20 -fopenmp "
+        f"clang++ -O3{errno_flag}{no_trap_flag}{fm_flag} -Wall -shared -march=x86-64 -std=c++20 -fopenmp "
         f"-I{python_include} {pybind11_includes} -fPIC {cpp_path} "
         f"-o {output_file} -lmpfr -lgmp"
     )
