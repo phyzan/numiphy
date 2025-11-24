@@ -163,7 +163,7 @@ def generate_cpp_file(code, directory, module_name):
     return os.path.join(directory, f'{module_name}.cpp')
 
 def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->str:
-    header = "#include <pybind11/pybind11.h>\n\n#include <mpreal.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
+    header = "#include <pybind11/pybind11.h>\n\n#include <mpreal.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\nusing mpfr::mpreal;"
 
     names = [f"func{i}" for i in range(len(functions))]
 
