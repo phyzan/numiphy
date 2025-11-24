@@ -124,8 +124,7 @@ class CompileTemplate:
     
     @cached_property
     def _code(self):
-        names = [f'f_{i}' for i in range(len(self.lowlevel_callables))]
-        return '\n\n'.join([g.code(name) if g is not None else '' for g, name in zip(self.lowlevel_callables, names)])
+        return generate_cpp_code(self.lowlevel_callables, self.module_name)
     
     @property
     def _funcs_path(self):
@@ -163,14 +162,10 @@ def generate_cpp_file(code, directory, module_name):
     
     return os.path.join(directory, f'{module_name}.cpp')
 
-
-def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None)->tuple[Pointer,...]:
-    none_modname = module_name is None
-    if (none_modname):
-        module_name = tools.random_module_name()
+def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->str:
     header = "#include <pybind11/pybind11.h>\n\n#include <mpreal.h>\n\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;"
 
-    names = [f"_lowlevel_func_{i}" for i in range(len(functions))]
+    names = [f"func{i}" for i in range(len(functions))]
 
     code_block = '\n\n'.join([f.code(name) if f is not None else '' for f, name in zip(functions, names)])
 
@@ -180,6 +175,13 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
     pybind_cond = f"PYBIND11_MODULE({module_name}, m)"+'{'+py_func+'\n}'
     items = [header, code_block, pybind_cond]
     code = "\n\n".join(items)
+    return code
+
+def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None)->tuple[Pointer,...]:
+    none_modname = module_name is None
+    if (none_modname):
+        module_name = tools.random_module_name()
+    code = generate_cpp_code(functions, module_name)
     if none_modname:
         with tempfile.TemporaryDirectory() as so_dir:
             with tempfile.TemporaryDirectory() as temp_dir:
