@@ -2125,7 +2125,7 @@ def _apply_seq(seq: list[Expr], other: Expr):
         res = seq[i].apply(res)
     return res
 
-def variables(arg: str):
+def symbols(arg: str):
     x = arg.split(', ')
     y = []
     for i in x:

@@ -178,6 +178,25 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->
     return code
 
 def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None)->tuple[Pointer,...]:
+    '''
+    Converts a list of expressions into C++ syntax, and compiles them as separate functions
+
+    Parameters
+    --------------------
+    directory: 
+        The directory to store the compiled python module that contains the pointers to the compiled functions.
+    module_name:
+        The name of the compiled module
+
+    If the module name is None, the module is compiled in a temporary directory
+    If only the directory is None, the module is compiled in the current working directory
+    Otherwise, it is compiled in the provided directory
+
+    Returns
+    ---------------------------
+    pointers: tuple of void pointers, each pointing to a compiled function, in the same order
+        as they were provided
+    '''
     none_modname = module_name is None
     if (none_modname):
         module_name = tools.random_module_name()
@@ -189,7 +208,7 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
                 tools.compile(cpp_file, so_dir, module_name)
             temp_module = tools.import_lowlevel_module(so_dir, module_name)
     else:
-        so_dir = directory if directory is not None else tools.get_source_dir()
+        so_dir = directory if directory is not None else os.getcwd()
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = generate_cpp_file(code, temp_dir, module_name)
             tools.compile(cpp_file, so_dir, module_name)

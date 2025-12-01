@@ -18,46 +18,7 @@ import sysconfig
 import importlib.util
 from typing import Any
 from .compile_tools import *
-from pathlib import Path
 
-
-def get_source_dir():
-    """
-    Get the directory of the currently running script.
-    Works for both .py files and .ipynb notebooks.
-    Returns the directory of the caller, not this module.
-    """
-    # Check if we're in a Jupyter/IPython environment
-    try:
-        exec('get_ipython()')
-        # We're in IPython/Jupyter - use cwd for notebooks
-        return os.getcwd()
-    except NameError:
-        # Not in IPython, we're in a regular Python script
-        # Inspect the call stack to find the caller's file
-        frame = inspect.currentframe()
-        if frame is None:
-            return os.getcwd()
-        
-        try:
-            caller_frame = frame.f_back
-            while caller_frame:
-                caller_file = caller_frame.f_code.co_filename
-                # Skip frames from this module and internal frames
-                if caller_file != __file__ and not caller_file.startswith('<') and os.path.exists(caller_file):
-                    return str(Path(caller_file).parent.resolve())
-                caller_frame = caller_frame.f_back
-            
-            # Fallback to __main__ module's file
-            if hasattr(sys.modules['__main__'], '__file__'):
-                main_file = sys.modules['__main__'].__file__
-                if main_file and os.path.exists(main_file):
-                    return str(Path(main_file).parent.resolve())
-        finally:
-            del frame
-    
-    # Ultimate fallback
-    return os.getcwd()
 
 def call_with_consumed(func, **kwargs):
     sig = inspect.signature(func)
