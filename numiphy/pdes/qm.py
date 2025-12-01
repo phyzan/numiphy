@@ -1,7 +1,7 @@
 from __future__ import annotations
 from . import ivps
 from . import bounds
-from ..symlib import symcore as sym
+from ..symlib import *
 from ..findiffs import grids
 from ..symlib import geom
 from . import linalg
@@ -10,9 +10,9 @@ import numpy as np
 
 class Schroedinger1D(ivps.HomLinearIBVP):
 
-    def __init__(self, V: sym.Expr, grid: grids.Grid1D, hbar=1., m=1.):
-        x = sym.Symbol('x', 0)
-        Dx = sym.Diff(x)
+    def __init__(self, V: Expr, grid: grids.Grid1D, hbar=1., m=1.):
+        x = Symbol('x', 0)
+        Dx = Diff(x)
         self.H = -hbar**2/(2*m) * Dx**2 + V
         bcx = bounds.StandardAxisBcs(bounds.Dirichlet(), bounds.Dirichlet())
         bcs = bounds.StaticBcs(bcx)

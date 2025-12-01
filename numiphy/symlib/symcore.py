@@ -6,7 +6,7 @@ from ..findiffs import grids
 from ..findiffs.grids import InterpedArray
 from ..toolkit import tools
 from ..toolkit.plotting import plot, animate
-from typing import Type, Dict, Self
+from typing import Type, Dict
 import itertools
 from functools import cached_property
 import math
@@ -26,52 +26,52 @@ class Expr:
         obj._args = args
         return obj
 
-    def __add__(self, other):
+    def __add__(self, other)->Expr:
         return Add(self, asexpr(other))
     
-    def __sub__(self, other):
+    def __sub__(self, other)->Expr:
         return Add(self, -asexpr(other))
     
-    def __mul__(self, other):
+    def __mul__(self, other)->Expr:
         return Mul(self, asexpr(other))
     
-    def __truediv__(self, other):
+    def __truediv__(self, other)->Expr:
         return Mul(self, asexpr(other)**-1)
     
-    def __pow__(self, other):
+    def __pow__(self, other)->Expr:
         return Pow(self, asexpr(other))
     
-    def __neg__(self):
+    def __neg__(self)->Expr:
         return -1*self
     
-    def __radd__(self, other):
+    def __radd__(self, other)->Expr:
         return asexpr(other) + self
     
-    def __rsub__(self, other):
+    def __rsub__(self, other)->Expr:
         return asexpr(other) - self
     
-    def __rmul__(self, other):
+    def __rmul__(self, other)->Expr:
         return asexpr(other) * self
     
-    def __rtruediv__(self, other):
+    def __rtruediv__(self, other)->Expr:
         return asexpr(other) / self
     
-    def __rpow__(self, other):
+    def __rpow__(self, other)->Expr:
         return asexpr(other) ** self
     
-    def __abs__(self):
+    def __abs__(self)->Expr:
         return Abs(self)
     
-    def __gt__(self, other):
+    def __gt__(self, other)->Expr:
         return Gt(self, other)
     
-    def __lt__(self, other):
+    def __lt__(self, other)->Expr:
         return Lt(self, other)
     
-    def __ge__(self, other):
+    def __ge__(self, other)->Expr:
         return Ge(self, other)
     
-    def __le__(self, other):
+    def __le__(self, other)->Expr:
         return Le(self, other)
 
     def __repr__(self):

@@ -1,11 +1,9 @@
 from __future__ import annotations
-
 from .symcore import Expr, asexpr, Number, Symbol, S
 from typing import Dict
 import numpy as np
 from typing import Callable
 import numpy.typing as npt
-import torch
 
 
 class Boolean(Expr):

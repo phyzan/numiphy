@@ -1,9 +1,8 @@
 from __future__ import annotations
 from ..findiffs import grids
 from ..toolkit import tools
-from . import symcore as sym
+from ..symlib import Expr, Symbol, Piecewise, sin, cos
 import numpy as np
-from typing import Callable
 from typing import Iterable
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
@@ -129,7 +128,7 @@ class Line(GeomObject):
 
     dof = 1
 
-    def __init__(self, x: list[sym.Expr], lims: tuple[float, float]):
+    def __init__(self, x: list[Expr], lims: tuple[float, float]):
         _var = None
         for xi in x:
             if len(xi.variables) > 1:
@@ -147,7 +146,7 @@ class Line(GeomObject):
         self.Args = (x.copy(), lims, _var, _x_callable, _xdot_callable)
 
     @property
-    def _x(self)->list[sym.Expr]:
+    def _x(self)->list[Expr]:
         return self.Args[0]
     
     @property
@@ -155,7 +154,7 @@ class Line(GeomObject):
         return self.Args[1]
 
     @property
-    def _var(self)->sym.Symbol:
+    def _var(self)->Symbol:
         return self.Args[2]
     
     @property
@@ -229,7 +228,7 @@ class Line(GeomObject):
 
 class Line2D(Line):
 
-    def __init__(self, x: sym.Expr, y: sym.Expr, lims: tuple[float, float]):
+    def __init__(self, x: Expr, y: Expr, lims: tuple[float, float]):
         super().__init__([x, y], lims)
 
     def x(self, u):
@@ -276,10 +275,10 @@ class Parallelogram(Line2D):
 
         x0, y0 = x1, y1
         a, b = self.Lx, self.Ly
-        u = sym.Symbol('u')
-        x = sym.Piecewise((x0+u*a, u<1), (x0+a, u<2), (x0+a*(3-u), u<3), (x0, True))
+        u = Symbol('u')
+        x = Piecewise((x0+u*a, u<1), (x0+a, u<2), (x0+a*(3-u), u<3), (x0, True))
 
-        y = sym.Piecewise((y0, u<1), (y0+(u-1)*b, u<2), (y0+b, u<3), (y0+(4-u)*b, True))
+        y = Piecewise((y0, u<1), (y0+(u-1)*b, u<2), (y0+b, u<3), (y0+(4-u)*b, True))
         super().__init__(x, y, lims=(0, 4))
 
     def split(self)->list[Parallelogram]:
@@ -294,10 +293,10 @@ class Parallelogram(Line2D):
 
 def Circle(r: float, center: tuple[float])->Line:
 
-    t = sym.Symbol('t')
+    t = Symbol('t')
 
-    x = center[0] + r*sym.cos(t)
-    y = center[1] + r*sym.sin(t)
+    x = center[0] + r*cos(t)
+    y = center[1] + r*sin(t)
 
     return Line2D(x, y, (0, 2*math.pi))
 
