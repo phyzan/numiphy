@@ -167,9 +167,9 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->
 
     names = [f"func{i}" for i in range(len(functions))]
 
-    code_block = '\n\n'.join([f.code(name) if f is not None else '' for f, name in zip(functions, names)])
+    code_block = '\n\n'.join([f.code(name) for f, name in zip(functions, names)])
 
-    array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' if f is not None else 'nullptr' for f, name in zip(functions, names)])+")"
+    array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' for f, name in zip(functions, names)])+")"
 
     py_func = '\n\tm.def("pointers", [](){return '+array+';});'
     pybind_cond = f"PYBIND11_MODULE({module_name}, m)"+'{'+py_func+'\n}'
