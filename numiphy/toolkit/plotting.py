@@ -11,31 +11,53 @@ import numpy as np
 from typing import Dict
 from matplotlib.figure import Figure as Fig
 from matplotlib.axes import Axes
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 def plot(arr: np.ndarray, grid: grids.Grid, ax=None, **kwargs):
-    '''
-    Returns fig, ax created in the plotting
-    kwargs are matplotlib parameters passed into ax.plot() (for 1d plots)
-    or ax.pcolormesh() (for 2d plots)
-    '''
+    """
+    Returns (fig, ax) for 1D or (fig, ax, cbar) for 2D.
+    Uses pcolormesh for 2D unless use_imshow=True is passed.
+    """
+    figsize = kwargs.pop('figsize', None)
+    aspect  = kwargs.pop('aspect', None)
+    use_imshow = kwargs.pop('use_imshow', False)
+
     if ax is None:
-        fig_ax = plt.subplots()
-        ax = fig_ax[1]
+        fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+        if aspect is not None:
+            ax.set_aspect(aspect)
     else:
-        fig_ax = ()
+        fig = None
 
     x = grid.x_mesh()
+
     if arr.ndim == 1:
         ax.plot(*x, arr, **kwargs)
-        return fig_ax
+        return (fig, ax) if fig is not None else (ax,)
+
     elif arr.ndim == 2:
-        mesh = ax.pcolormesh(*x, arr, **kwargs)
-        norm = plt.Normalize(arr.min(), arr.max())
-        cbar = plt.colorbar(mesh, ax=ax, pad=0.01)
-        return *fig_ax, cbar
+        # Plotting
+        if use_imshow:
+            X, Y = x
+            extent = (X.min(), X.max(), Y.min(), Y.max())
+            im = ax.imshow(arr, extent=extent, origin='lower',
+                           aspect=aspect if aspect is not None else 'auto', **kwargs)
+            mesh = im
+        else:
+            mesh = ax.pcolormesh(*x, arr, **kwargs)
+            # pcolormesh will use data coordinates
+
+        # Create a colorbar axis that matches the axes height
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="4%", pad=0.06)  # tweak size/pad as desired
+        cbar = fig.colorbar(mesh, cax=cax)
+
+        return (fig, ax, cbar) if fig is not None else (ax, cbar)
+
     else:
-        raise NotImplementedError('3D plotting not implemented')
+        raise NotImplementedError("3D plotting not implemented")
+
 
 
 def animate(varname: str, f: np.ndarray, duration: float, save: str, grid: grids.Grid, axis=-1, display = True, **kwargs):
