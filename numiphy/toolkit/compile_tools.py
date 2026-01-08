@@ -40,7 +40,6 @@ def compile(cpp_path, so_dir, module_name,
 
     print("Compiling...")
     subprocess.check_call(compile_cmd)
-    print(f"Compilation done: {output_file}")
 
 
 def random_module_name(length=8):
