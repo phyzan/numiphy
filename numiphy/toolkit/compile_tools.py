@@ -28,7 +28,7 @@ def compile(cpp_path, so_dir, module_name,
         flags.append('-ffast-math')
 
     compile_cmd = [
-        "clang++",
+        "g++",
         *flags,
         "-shared",
         f"-I{python_include}",
