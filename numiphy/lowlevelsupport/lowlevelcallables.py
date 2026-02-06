@@ -34,7 +34,7 @@ class LowLevelCallable(_CallableFunction):
         return f'[]({self.argument_list()}) -> {self.return_id()} ' + '{' +f'{self.core_impl()}'+'}'
     
     def compile(self, directory: str = None, module_name: str = None)->Pointer:
-        return compile_funcs([self], directory=directory, module_name=module_name)[0]
+        return compile_funcs([self], directory=directory, module_name=module_name)[0][0]
     
     def to_python_callable(self)->PythonCallable:
         raise NotImplementedError('')
@@ -163,20 +163,47 @@ def generate_cpp_file(code, directory, module_name):
     return os.path.join(directory, f'{module_name}.cpp')
 
 def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->str:
+
+    # get all EvaluatedScalarField objects first
+    evaluated_fields: list[EvaluatedScalarField] = []
+    for func in functions:
+        for field in func.evaluated_fields():
+            if field not in evaluated_fields:
+                evaluated_fields.append(field)
+
     has_mpreal = any([f._scalar_type == "mpreal" for f in functions])
     mpreal_include = '#include <mpreal.h>\n\n' if has_mpreal else ''
     mpreal_use = 'using mpfr::mpreal;\n\n' if has_mpreal else ''
-    header = "#include <pybind11/pybind11.h>\n\n" + mpreal_include + "#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\n" + mpreal_use
+    odepack_include = '#include <odepack/PyMain.hpp>\n\n' if evaluated_fields else ''
+    header = "#include <pybind11/pybind11.h>\n\n" + mpreal_include + odepack_include + "#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\n" + mpreal_use
+    if odepack_include != '':
+        header += 'using ode::PyScalarField;\n\n'
 
     names = [f"func{i}" for i in range(len(functions))]
 
+
+    field_block = '\n'.join([f'const PyScalarField<{f.ndim}>* {f.name} = nullptr;' for f in evaluated_fields])
+
+    field_names = [f.name for f in evaluated_fields]
+    for field in evaluated_fields:
+        field._args = (*field._args[:2], f"(*{field.name})", *field._args[3:])
     code_block = '\n\n'.join([f.code(name) for f, name in zip(functions, names)])
+    for field, name in zip(evaluated_fields, field_names):
+        field._args = (*field._args[:2], name, *field._args[3:])
+    # Generate set_fields function (always, even if empty)
+    if evaluated_fields:
+        set_fields_params = ', '.join([f'const PyScalarField<{f.ndim}>& {f.name}_tmp' for f in evaluated_fields])
+        set_fields_body = '\n'.join([f'\t{f.name} = &{f.name}_tmp;' for f in evaluated_fields])
+        set_fields_func = f'void set_fields({set_fields_params}){{\n{set_fields_body}\n}}'
+    else:
+        set_fields_func = 'void set_fields(){}'
 
     array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' for f, name in zip(functions, names)])+")"
 
     py_func = '\n\tm.def("pointers", [](){return '+array+';});'
+    py_func += '\n\tm.def("set_fields", &set_fields);'
     pybind_cond = f"PYBIND11_MODULE({module_name}, m)"+'{'+py_func+'\n}'
-    items = [header, code_block, pybind_cond]
+    items = [header, field_block, set_fields_func, code_block, pybind_cond]
     code = "\n\n".join(items)
     return code
 
@@ -216,4 +243,4 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
             cpp_file = generate_cpp_file(code, temp_dir, module_name)
             tools.compile(cpp_file, so_dir, module_name)
         temp_module = tools.import_lowlevel_module(so_dir, module_name)
-    return temp_module.pointers()
+    return temp_module.pointers(), temp_module.set_fields

@@ -121,7 +121,7 @@ class Expr:
         for x in self.atoms:
             if isinstance(x, Symbol) and x not in res:
                 res += (x,)
-        return tools.sort(res, [Hashable(x) for x in res])[0]
+        return res
     
     @cached_property
     def isNumber(self):
@@ -387,7 +387,7 @@ class Expr:
             for x in arg.variables:
                 if x not in res:
                     res += (x,)
-        return tools.sort(res, [Hashable(x) for x in res])[0]
+        return res
         
     def init(self, *args, simplify=True):
         '''
@@ -1071,9 +1071,9 @@ class Function(Expr):
     def name(self)->str:
         return self._args[0]
     
-    @property
-    def nd(self):
-        return (len(self._args)-1) // 2
+    # @property
+    # def nd(self):
+    #     return (len(self._args)-1) // 2
 
     def repr(self, lib="", **kwargs):
         if lib != '':
@@ -1352,8 +1352,18 @@ class Dummy(Symbol):
     def axis(self):
         raise NotImplementedError('')
 
+    def eval(self):
+        return self
+
+    def _replace(self, items):
+        if self in items:
+            return items[self]
+        return self
+
     def init(self, *args, simplify=True):
-        return Dummy(args[0])
+        res = Dummy(args[1])
+        res._args = args
+        return res
 
 
 class Subs(Expr):
@@ -1383,7 +1393,7 @@ class Subs(Expr):
                 if not isinstance(x, Symbol):
                     raise ValueError('Keys must be Symbol objects and values must be numbers')
                 if x in expr.variables:
-                    newvals[x] = vals[x]
+                    newvals[x] = asexpr(vals[x])
 
             if not newvals:
                 return expr
@@ -1418,7 +1428,7 @@ class Subs(Expr):
     def init(self, *args, simplify=True):
         n = (len(args)-1)//2
         subs_data = {args[1+i]: args[1+i+n] for i in range(n)}
-        return self.init(args[0], *subs_data, simplify=simplify)
+        return self.__class__(args[0], subs_data, simplify=simplify)
 
     def repr(self, lib="", **kwargs):
         if lib != '':
@@ -1698,12 +1708,11 @@ class Integral(Expr):
             return Derivative(self, var)
         
 
-
 class ScalarField(Function):
 
     _priority = 13
 
-    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: Symbol):
+    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *vars: Symbol, simplify=True):
         if ndarray.shape != grid.shape:
             raise ValueError(f'Grid shape is {grid.shape} while field shape is {ndarray.shape}')
         if len(vars) != grid.nd:
@@ -1713,11 +1722,28 @@ class ScalarField(Function):
         return obj
 
     def __call__(self, *args):
+        if any([isinstance(arg, Expr) and not arg.isNumber for arg in args]):
+            return EvaluatedScalarField(self._ndarray, self.grid, self.name, *args)
         if hasattr(args[0], '__iter__'):
             return self.interpolator(args, method="cubic")
         else:
             args = np.array(args)
             return self.interpolator(args, method="cubic")[0]
+        
+    def __eq__(self, other):
+        if not isinstance(other, ScalarField):
+            return False
+        elif self is other:
+            return True
+        elif (self._ndarray is other._ndarray):
+            return self._args[1:] == other._args[1:]
+        elif self._ndarray.shape == other._ndarray.shape:
+            return np.all(self._ndarray == other._ndarray) and self._args[1:] == other._args[1:]
+        else:
+            return False
+        
+    def __hash__(self):
+        return hash((self.__class__,) + self._hashable_content)
         
     @property
     def _ndarray(self)->np.ndarray:
@@ -1833,6 +1859,64 @@ class ScalarField(Function):
         return Subs(self, vals)
 
 
+class EvaluatedScalarField(ScalarField):
+    
+
+    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *values: tuple[Expr, ...], simplify=True):
+        if ndarray.shape != grid.shape:
+            raise ValueError(f'Grid shape is {grid.shape} while field shape is {ndarray.shape}')
+        if len(values) != grid.nd:
+            raise ValueError(f'Grid shape is {grid.shape} while the given variables are {len(vars)} in total: {", ".join([str(x) for x in vars])}')
+        obj = Expr.__new__(cls, name, *[asexpr(value) for value in values])
+        obj._args = (ndarray, grid) + obj._args
+        return obj
+
+    @property
+    def variables(self)->tuple[Symbol,...]:
+        return Expr.variables.__get__(self)
+    
+    @cached_property
+    def symbols(self)->tuple[Symbol, ...]:
+        return Expr.symbols.__get__(self)
+    
+    def eval(self):
+        if len(self.symbols) == 0:
+            return asexpr(ScalarField.__call__(self, *[x.eval().value for x in self._values]))
+        else:
+            return Expr.eval(self)
+        
+    def repr(self, lib="", **kwargs):
+        if lib != '':
+            raise NotImplementedError('Function objects do not support representation with an external library')
+        else:
+            return f'{self.name}({", ".join([x.repr(lib, **kwargs) for x in self._values])})'
+    
+    def lowlevel_repr(self, scalar_type="double"):
+        return f'{self.name}({", ".join([x.lowlevel_repr(scalar_type) for x in self._values])})'
+    
+
+    @cached_property
+    def _values(self) -> tuple[Expr, ...]:
+        return self.args[3:]
+    
+    @property
+    def _hashable_content(self):
+        return (_HashableNdArray(self._ndarray), _HashableGrid(self.grid), *self._values)
+    
+    def _diff(self, var):
+        '''
+        d/dx P (f1(x, y), f2(x, y), ... ) = sum_i dP/dfi * dfi/dx
+        '''
+        res = S.Zero
+        P = self.as_interped_array() # just a scalar field that can can diff wrt each axis using finite differences
+
+        for axis, fi in enumerate(self._values):
+            dP_dfi = P.diff(axis)
+            dfi_dvar = fi.diff(var)
+            res += EvaluatedScalarField(dP_dfi.ndarray(), dP_dfi.grid, f'{self.name}_{axis}', *self._values) * dfi_dvar
+        return res
+
+    
 
 class DummyScalarField(ScalarField):
 
