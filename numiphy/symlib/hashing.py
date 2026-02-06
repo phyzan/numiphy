@@ -65,7 +65,8 @@ class Hashable(_HashableObject):
 class _HashableNdArray(_HashableObject):
 
     def __init__(self, array: np.ndarray):
-        self.array = array.copy()
+        # Assumes the array will not be modified.
+        self.array = array
 
     def __hash__(self):
         return hash((self.array.shape, str(self.array.dtype), self.array.tobytes()))
@@ -105,7 +106,8 @@ class _HashableGrid(_HashableObject):
             elif obj1 < obj2:
                 return -1
             else:
-                return self.grid.periodic - other.grid.periodic
+                # Compare tuples lexicographically
+                return (self.grid.periodic > other.grid.periodic) - (self.grid.periodic < other.grid.periodic)
             
 def sort_by_hash(*args: Expr):
     res = sorted([Hashable(arg) for arg in args])

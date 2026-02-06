@@ -1892,7 +1892,7 @@ class EvaluatedScalarField(ScalarField):
             return f'{self.name}({", ".join([x.repr(lib, **kwargs) for x in self._values])})'
     
     def lowlevel_repr(self, scalar_type="double"):
-        return f'{self.name}({", ".join([x.lowlevel_repr(scalar_type) for x in self._values])})'
+        return f'(*{self.name})({", ".join([x.lowlevel_repr(scalar_type) for x in self._values])})'
     
 
     @cached_property

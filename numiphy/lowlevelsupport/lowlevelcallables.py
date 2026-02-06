@@ -177,13 +177,8 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, e
 
     names = [f"func{i}" for i in range(len(functions))]
 
-    field_names = [f.name for f in evaluated_fields]
-    for field in evaluated_fields:
-        field._args = (*field._args[:2], f"(*{field.name})", *field._args[3:])
-
     code_block = '\n\n'.join([f.code(name) for f, name in zip(functions, names)])
-    for field, name in zip(evaluated_fields, field_names):
-        field._args = (*field._args[:2], name, *field._args[3:])
+    
     code_block = extra_code_block+'\n\n' + code_block + '\n\n'
 
     array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' for f, name in zip(functions, names)])+")"
