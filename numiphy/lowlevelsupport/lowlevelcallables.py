@@ -135,7 +135,7 @@ class CompileTemplate:
             with open(self._funcs_path, "w") as f:
                 f.write(self._code)
         result = compile_funcs(self.lowlevel_callables, self.directory, self.module_name)
-        return result
+        return result[0]
     
     @cached_property
     def pointers(self)->tuple[Pointer,...]:
@@ -162,7 +162,7 @@ def generate_cpp_file(code, directory, module_name):
     
     return os.path.join(directory, f'{module_name}.cpp')
 
-def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->str:
+def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]]=())->str:
 
     # get all EvaluatedScalarField objects first
     evaluated_fields: list[EvaluatedScalarField] = []
@@ -174,15 +174,9 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->
     has_mpreal = any([f._scalar_type == "mpreal" for f in functions])
     mpreal_include = '#include <mpreal.h>\n\n' if has_mpreal else ''
     mpreal_use = 'using mpfr::mpreal;\n\n' if has_mpreal else ''
-    odepack_include = '#include <odepack/PyMain.hpp>\n\n' if evaluated_fields else ''
-    header = "#include <pybind11/pybind11.h>\n\n" + mpreal_include + odepack_include + "#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\n" + mpreal_use
-    if odepack_include != '':
-        header += 'using ode::PyScalarField;\n\n'
+    header = "#include <pybind11/pybind11.h>\n\n" + mpreal_include + extra_header_block + "\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\n" + mpreal_use
 
     names = [f"func{i}" for i in range(len(functions))]
-
-
-    field_block = '\n'.join([f'const PyScalarField<{f.ndim}>* {f.name} = nullptr;' for f in evaluated_fields])
 
     field_names = [f.name for f in evaluated_fields]
     for field in evaluated_fields:
@@ -190,24 +184,20 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str)->
     code_block = '\n\n'.join([f.code(name) for f, name in zip(functions, names)])
     for field, name in zip(evaluated_fields, field_names):
         field._args = (*field._args[:2], name, *field._args[3:])
-    # Generate set_fields function (always, even if empty)
-    if evaluated_fields:
-        set_fields_params = ', '.join([f'const PyScalarField<{f.ndim}>& {f.name}_tmp' for f in evaluated_fields])
-        set_fields_body = '\n'.join([f'\t{f.name} = &{f.name}_tmp;' for f in evaluated_fields])
-        set_fields_func = f'void set_fields({set_fields_params}){{\n{set_fields_body}\n}}'
-    else:
-        set_fields_func = 'void set_fields(){}'
+    code_block = extra_code_block+'\n\n' + code_block + '\n\n'
 
     array = "py::make_tuple("+", ".join([f'reinterpret_cast<const void*>({name})' for f, name in zip(functions, names)])+")"
 
     py_func = '\n\tm.def("pointers", [](){return '+array+';});'
-    py_func += '\n\tm.def("set_fields", &set_fields);'
+    
+    for func_name, func_code in extra_funcs:
+        py_func += f'\n\tm.def("{func_name}", {func_code});'
     pybind_cond = f"PYBIND11_MODULE({module_name}, m)"+'{'+py_func+'\n}'
-    items = [header, field_block, set_fields_func, code_block, pybind_cond]
+    items = [header, code_block, pybind_cond]
     code = "\n\n".join(items)
     return code
 
-def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None)->tuple[Pointer,...]:
+def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = ())->tuple[tuple[Pointer,...], ...]:
     '''
     Converts a list of expressions into C++ syntax, and compiles them as separate functions
 
@@ -230,17 +220,17 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
     none_modname = module_name is None
     if (none_modname):
         module_name = tools.random_module_name()
-    code = generate_cpp_code(functions, module_name)
+    code = generate_cpp_code(functions, module_name, extra_header_block=extra_header_block, extra_code_block=extra_code_block, extra_funcs=extra_funcs)
     if none_modname:
         with tempfile.TemporaryDirectory() as so_dir:
             with tempfile.TemporaryDirectory() as temp_dir:
                 cpp_file = generate_cpp_file(code, temp_dir, module_name)
-                tools.compile(cpp_file, so_dir, module_name)
+                tools.compile(cpp_file, so_dir, module_name, links=links)
             temp_module = tools.import_lowlevel_module(so_dir, module_name)
     else:
         so_dir = directory if directory is not None else os.getcwd()
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = generate_cpp_file(code, temp_dir, module_name)
-            tools.compile(cpp_file, so_dir, module_name)
+            tools.compile(cpp_file, so_dir, module_name, links=links)
         temp_module = tools.import_lowlevel_module(so_dir, module_name)
-    return temp_module.pointers(), temp_module.set_fields
+    return temp_module.pointers(), *[getattr(temp_module, func_name) for func_name, _ in extra_funcs]
