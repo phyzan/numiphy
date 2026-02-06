@@ -168,8 +168,7 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, e
     evaluated_fields: list[EvaluatedScalarField] = []
     for func in functions:
         for field in func.evaluated_fields():
-            if field not in evaluated_fields:
-                evaluated_fields.append(field)
+            evaluated_fields.append(field)
 
     has_mpreal = any([f._scalar_type == "mpreal" for f in functions])
     mpreal_include = '#include <mpreal.h>\n\n' if has_mpreal else ''
@@ -181,6 +180,7 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, e
     field_names = [f.name for f in evaluated_fields]
     for field in evaluated_fields:
         field._args = (*field._args[:2], f"(*{field.name})", *field._args[3:])
+
     code_block = '\n\n'.join([f.code(name) for f, name in zip(functions, names)])
     for field, name in zip(evaluated_fields, field_names):
         field._args = (*field._args[:2], name, *field._args[3:])
@@ -197,7 +197,7 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, e
     code = "\n\n".join(items)
     return code
 
-def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = ())->tuple[tuple[Pointer,...], ...]:
+def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str]=())->tuple[tuple[Pointer,...], ...]:
     '''
     Converts a list of expressions into C++ syntax, and compiles them as separate functions
 
@@ -225,12 +225,12 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
         with tempfile.TemporaryDirectory() as so_dir:
             with tempfile.TemporaryDirectory() as temp_dir:
                 cpp_file = generate_cpp_file(code, temp_dir, module_name)
-                tools.compile(cpp_file, so_dir, module_name, links=links)
+                tools.compile(cpp_file, so_dir, module_name, links=links, extra_flags=extra_flags)
             temp_module = tools.import_lowlevel_module(so_dir, module_name)
     else:
         so_dir = directory if directory is not None else os.getcwd()
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = generate_cpp_file(code, temp_dir, module_name)
-            tools.compile(cpp_file, so_dir, module_name, links=links)
+            tools.compile(cpp_file, so_dir, module_name, links=links, extra_flags=extra_flags)
         temp_module = tools.import_lowlevel_module(so_dir, module_name)
     return temp_module.pointers(), *[getattr(temp_module, func_name) for func_name, _ in extra_funcs]

@@ -43,8 +43,7 @@ class _CallableFunction:
         res = []
         for item in items:
             for sub in item.deepsearch(EvaluatedScalarField):
-                if (sub not in res):
-                    res.append(sub)
+                res.append(sub)
         return tuple(res)
 
     def argument_list(self):

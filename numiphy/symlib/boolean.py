@@ -53,7 +53,7 @@ class Comparison(Boolean):
                 return f'{self.__class__.__name__}({self.a}, {self.b})'
             else:
                 return f'({self.a} {self.operator} {self.b})'
-        elif lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+        elif lib == 'torch' and not self.isNumber and kwargs.get('out', None) is not None:
             return f'torch.{self.torch_repr}({self.a.repr(lib, **kwargs)}, {self.b.repr(lib, **kwargs)}, out=out)'
         return f'({self.a.repr(lib, **kwargs)} {self.operator} {self.b.repr(lib, **kwargs)})'
 
@@ -103,7 +103,7 @@ class Logical(Boolean):
         return self.args[1]
     
     def repr(self, lib="", **kwargs):
-        if lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+        if lib == 'torch' and not self.isNumber and kwargs.get('out', None) is not None:
             return f'torch.{self.torch_repr}({self.left.repr(lib, **kwargs)}, {self.right.repr(lib, **kwargs)}, out=out)'
         return f'(({self.left.repr(lib, **kwargs)}) {self.operator} ({self.right.repr(lib, **kwargs)}))'
     
@@ -142,7 +142,7 @@ class Not(Boolean):
         return self._args[0]
 
     def repr(self, lib="", **kwargs):
-        if lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+        if lib == 'torch' and not self.isNumber and kwargs.get('out', None) is not None:
             return f'torch.{self.torch_repr}({self.arg.repr(lib, **kwargs)}, out=out)'
         return f'({self.operator} ({self.arg.repr(lib, **kwargs)}))'
     

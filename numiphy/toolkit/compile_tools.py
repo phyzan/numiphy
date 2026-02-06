@@ -8,7 +8,7 @@ import pybind11
 from typing import Iterable
 
 def compile(cpp_path, so_dir, module_name,
-            no_math_errno=True, no_math_trap=True, fast_math=False, links: Iterable[tuple[str, str]] = ()):
+            no_math_errno=True, no_math_trap=True, fast_math=False, links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str] = ()):
     ## links[i] = (directory, name), so that -Ldirectory and -lname can be added to the compile command
     if not os.path.exists(cpp_path):
         raise RuntimeError(f"CPP file path does not exist: {cpp_path}")
@@ -34,11 +34,11 @@ def compile(cpp_path, so_dir, module_name,
         "-shared",
         f"-I{python_include}",
         f"-I{pybind11_include}",
+        *[f"-{flag}" for flag in extra_flags],
         cpp_path,
         "-o", output_file,
         "-lmpfr", "-lgmp"
     ] + [f"-L{directory}" for directory, _ in links] + [f"-l{name}" for _, name in links]
-
     print("Compiling...")
     subprocess.check_call(compile_cmd)
 

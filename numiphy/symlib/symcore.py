@@ -606,7 +606,7 @@ class Operation(Expr):
         raise NotImplementedError('')
     
     def repr(self, lib = "", **kwargs)->str:
-        if lib == 'torch' and kwargs.get('out', False):
+        if lib == 'torch' and kwargs.get('out', None) is not None:
             if len(self.args) == 2 and not (self._args[0].isNumber and self._args[1].isNumber):
                 return f'torch.{self.torch_binary}({self._args[0].repr(lib, **kwargs)}, {self._args[1].repr(lib, **kwargs)}, out=out)'
             elif len(self.args) > 2:
@@ -718,7 +718,7 @@ class Add(Operation):
         return res
     
     def repr(self, lib = "", **kwargs)->str:
-        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', False):
+        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', None) is not None:
             return super().repr(lib, **kwargs)
         return self._remove_minus("repr", lib)
     
@@ -922,7 +922,7 @@ class Mul(Operation):
         return s
 
     def repr(self, lib="", **kwargs):
-        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', False):
+        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', None) is not None:
             return super().repr(lib, **kwargs)
         return self._remove_one("repr", lib)
     
@@ -987,7 +987,7 @@ class Pow(Operation):
             return a, b
     
     def repr(self, lib = "", **kwargs):
-        if lib == 'torch' and not self.isNumber and kwargs.get('out', False):
+        if lib == 'torch' and not self.isNumber and kwargs.get('out', None) is not None:
             return super().repr(lib, **kwargs)
         elif self.base.repr_priority == self.repr_priority:
             return f'({self.base._repr_from(lib, Pow)})**{self.power._repr_from(lib, Pow)}'
@@ -1721,7 +1721,7 @@ class ScalarField(Function):
         obj._args = (ndarray, grid) + obj._args
         return obj
 
-    def __call__(self, *args):
+    def __call__(self, *args)->np.ndarray|EvaluatedScalarField:
         if any([isinstance(arg, Expr) and not arg.isNumber for arg in args]):
             return EvaluatedScalarField(self._ndarray, self.grid, self.name, *args)
         if hasattr(args[0], '__iter__'):
