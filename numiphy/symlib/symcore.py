@@ -1721,9 +1721,7 @@ class ScalarField(Function):
         obj._args = (ndarray, grid) + obj._args
         return obj
 
-    def __call__(self, *args)->np.ndarray|EvaluatedScalarField:
-        if any([isinstance(arg, Expr) and not arg.isNumber for arg in args]):
-            return EvaluatedScalarField(self._ndarray, self.grid, self.name, *args)
+    def __call__(self, *args)->np.ndarray:
         if hasattr(args[0], '__iter__'):
             return self.interpolator(args, method="cubic")
         else:
@@ -1857,65 +1855,6 @@ class ScalarField(Function):
     
     def _subs(self, vals):
         return Subs(self, vals)
-
-
-class EvaluatedScalarField(ScalarField):
-    
-
-    def __new__(cls, ndarray: np.ndarray, grid: grids.Grid, name: str, *values: tuple[Expr, ...], simplify=True):
-        if ndarray.shape != grid.shape:
-            raise ValueError(f'Grid shape is {grid.shape} while field shape is {ndarray.shape}')
-        if len(values) != grid.nd:
-            raise ValueError(f'Grid shape is {grid.shape} while the given variables are {len(vars)} in total: {", ".join([str(x) for x in vars])}')
-        obj = Expr.__new__(cls, name, *[asexpr(value) for value in values])
-        obj._args = (ndarray, grid) + obj._args
-        return obj
-
-    @property
-    def variables(self)->tuple[Symbol,...]:
-        return Expr.variables.__get__(self)
-    
-    @cached_property
-    def symbols(self)->tuple[Symbol, ...]:
-        return Expr.symbols.__get__(self)
-    
-    def eval(self):
-        if len(self.symbols) == 0:
-            return asexpr(ScalarField.__call__(self, *[x.eval().value for x in self._values]))
-        else:
-            return Expr.eval(self)
-        
-    def repr(self, lib="", **kwargs):
-        if lib != '':
-            raise NotImplementedError('Function objects do not support representation with an external library')
-        else:
-            return f'{self.name}({", ".join([x.repr(lib, **kwargs) for x in self._values])})'
-    
-    def lowlevel_repr(self, scalar_type="double"):
-        return f'(*{self.name})({", ".join([x.lowlevel_repr(scalar_type) for x in self._values])})'
-    
-
-    @cached_property
-    def _values(self) -> tuple[Expr, ...]:
-        return self.args[3:]
-    
-    @property
-    def _hashable_content(self):
-        return (_HashableNdArray(self._ndarray), _HashableGrid(self.grid), *self._values)
-    
-    def _diff(self, var):
-        '''
-        d/dx P (f1(x, y), f2(x, y), ... ) = sum_i dP/dfi * dfi/dx
-        '''
-        res = S.Zero
-        P = self.as_interped_array() # just a scalar field that can can diff wrt each axis using finite differences
-
-        for axis, fi in enumerate(self._values):
-            dP_dfi = P.diff(axis)
-            dfi_dvar = fi.diff(var)
-            res += EvaluatedScalarField(dP_dfi.ndarray(), dP_dfi.grid, f'{self.name}_{axis}', *self._values) * dfi_dvar
-        return res
-
     
 
 class DummyScalarField(ScalarField):

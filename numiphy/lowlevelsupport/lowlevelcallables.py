@@ -164,12 +164,6 @@ def generate_cpp_file(code, directory, module_name):
 
 def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]]=())->str:
 
-    # get all EvaluatedScalarField objects first
-    evaluated_fields: list[EvaluatedScalarField] = []
-    for func in functions:
-        for field in func.evaluated_fields():
-            evaluated_fields.append(field)
-
     has_mpreal = any([f._scalar_type == "mpreal" for f in functions])
     mpreal_include = '#include <mpreal.h>\n\n' if has_mpreal else ''
     mpreal_use = 'using mpfr::mpreal;\n\n' if has_mpreal else ''

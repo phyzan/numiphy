@@ -33,17 +33,19 @@ class _CallableFunction:
         self._arg_symbols = tuple(self._arg_symbols)
         self._constructor_params = (result, args, kwargs)
 
-    def evaluated_fields(self)->tuple[EvaluatedScalarField, ...]:
-        items: list[Expr] = []
-        if isinstance(self._res, Expr):
-            items.append(self._res)
+    @property
+    def expressions(self)->tuple[Expr, ...]:
+        if hasattr(self._res, '__iter__'):
+            return tuple(self._res)
         else:
-            items = list(self._res)
-        
+            return (self._res,)
+    
+    def deepsearch(self, target: Type = Expr) -> tuple[Expr, ...]:
         res = []
-        for item in items:
-            for sub in item.deepsearch(EvaluatedScalarField):
-                res.append(sub)
+        for expr in self.expressions:
+            for item in expr.deepsearch(target):
+                if item not in res:
+                    res.append(item)
         return tuple(res)
 
     def argument_list(self):
