@@ -1,6 +1,15 @@
+<div align="center">
+
 # NumiPhy
 
-**Symbolic math with high-performance C++ compilation**
+**Symbolic expressions that compile to Python, NumPy, PyTorch, and C++**
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
+</div>
+
+---
 
 NumiPhy combines intuitive symbolic mathematics with fast compiled code. Define mathematical expressions symbolically and instantly compile them to optimized C++ with zero Python overhead, targeting numerical computing.
 
@@ -8,12 +17,13 @@ NumiPhy combines intuitive symbolic mathematics with fast compiled code. Define 
 
 NumiPhy is **heavily inspired by SymPy** but intentionally **more limited and focused**. While SymPy is a comprehensive computer algebra system with extensive symbolic capabilities, NumiPhy prioritizes:
 
-**Key Advantages Over SymPy:**
-- **Modern Type Hinting**: Built with full Python type hints from the ground up, providing better IDE support and type safety
-- **Direct C++ Compilation**: Automatically compiles symbolic expressions to optimized C++ shared libraries and returns function pointers, not just code generation
-- **Symbolic Operators**: First-class support for differential operators within symbolic expressions, naturally integrated with the math system
+| | Feature | Description |
+|---|---------|-------------|
+| :keyboard: | **Modern Type Hinting** | Built with full Python type hints from the ground up, providing better IDE support and type safety |
+| :zap: | **Direct C++ Compilation** | Automatically compiles symbolic expressions to optimized C++ shared libraries and returns function pointers, not just code generation |
+| :triangular_ruler: | **Symbolic Operators** | First-class support for differential operators within symbolic expressions, naturally integrated with the math system |
 
-Be sure to use **SymPy** for comprehensive symbolic math (integration, series, limits, simplification, equation solving, etc.)
+> :bulb: Be sure to use **SymPy** for comprehensive symbolic math (integration, series, limits, simplification, equation solving, etc.)
 
 ## Key Features
 
