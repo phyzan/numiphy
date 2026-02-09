@@ -5,6 +5,7 @@ import keyword
 import sysconfig
 import subprocess
 import pybind11
+import time
 from typing import Iterable
 
 def compile(cpp_path, so_dir, module_name,
@@ -47,7 +48,10 @@ def compile(cpp_path, so_dir, module_name,
     
     compile_cmd += extra_links
     print("Compiling...")
+    t1 = time.perf_counter()
     subprocess.check_call(compile_cmd)
+    t2 = time.perf_counter()
+    print(f"Compiled binary constructed in {t2 - t1:.2f} seconds\n")
 
 
 def random_module_name(length=8):
