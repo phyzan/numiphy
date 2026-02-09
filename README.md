@@ -11,7 +11,7 @@
 
 ---
 
-NumiPhy combines intuitive symbolic mathematics with fast compiled code. Define mathematical expressions symbolically and instantly compile them to optimized C++ with zero Python overhead, targeting numerical computing.
+NumiPhy combines intuitive symbolic mathematics with fast compiled code. Define mathematical expressions symbolically and instantly compile them to importable binary files with zero Python overhead, targeting numerical computing. Sampled functions on regular grids can be encapsulated as symbolic objects with built-in support for finite differences, for seemless differentiation and control over complex algebraic expressions.
 
 ## About NumiPhy
 
