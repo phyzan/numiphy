@@ -37,8 +37,15 @@ def compile(cpp_path, so_dir, module_name,
         *[f"-{flag}" for flag in extra_flags],
         cpp_path,
         "-o", output_file,
-        "-lmpfr", "-lgmp"
-    ] + [f"-L{directory}" for directory, _ in links] + [f"-l{name}" for _, name in links]
+    ]
+
+    extra_links = []
+    for directory, name in links:
+        if directory is not None:
+            extra_links.append(f"-L{directory}")
+        extra_links.append(f"-l{name}")
+    
+    compile_cmd += extra_links
     print("Compiling...")
     subprocess.check_call(compile_cmd)
 
