@@ -105,7 +105,7 @@ class PythonCallable(_CallableFunction):
         return 'float'
     
     def _code(self, name, return_type, arg_list, code_impl):
-        return f"def {name}({arg_list})->{return_type}:\n\t{code_impl}"
+        return f"def {name}({arg_list})->{return_type}:\n    {code_impl}"
     
     def argument_list(self, **extra_args):
         arglist = [self.scalar_id(x.name) for x in self._arg_symbols] + [f'{arg}={val}' for arg, val in extra_args.items()]

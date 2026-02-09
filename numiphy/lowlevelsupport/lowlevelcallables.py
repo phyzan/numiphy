@@ -47,7 +47,7 @@ class BooleanLowLevelCallable(LowLevelCallable, _BooleanCallable):
 
     def core_impl(self):
         res = self.expr.varsub(self._map).lowlevel_repr(self._scalar_type)
-        return f"return {res};"
+        return f"    return {res};"
     
     def to_python_callable(self):
         p = self._constructor_params
@@ -61,7 +61,7 @@ class ScalarLowLevelCallable(LowLevelCallable, _ScalarCallable):
 
     def core_impl(self):
         res = self.expr.varsub(self._map).lowlevel_repr(self._scalar_type)
-        return f"return {res};"
+        return f"    return {res};"
     
     def return_id(self):
         return self._scalar_type
@@ -86,7 +86,7 @@ class TensorLowLevelCallable(LowLevelCallable, _TensorCallable):
     
     def core_impl(self):
         res = self.new_array
-        return '\n'.join([f'result[{i}] = {res[i].lowlevel_repr(self._scalar_type)};' for i in range(len(res))])
+        return '\n'.join([f'    result[{i}] = {res[i].lowlevel_repr(self._scalar_type)};' for i in range(len(res))])
 
     def lambda_code(self):
         return f'[]({self._scalar_type}* result, {self.argument_list()})' + '{' +f'{self.core_impl()}'+'}'

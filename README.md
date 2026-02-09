@@ -12,7 +12,6 @@ NumiPhy is **heavily inspired by SymPy** but intentionally **more limited and fo
 - **Modern Type Hinting**: Built with full Python type hints from the ground up, providing better IDE support and type safety
 - **Direct C++ Compilation**: Automatically compiles symbolic expressions to optimized C++ shared libraries and returns function pointers, not just code generation
 - **Symbolic Operators**: First-class support for differential operators within symbolic expressions, naturally integrated with the math system
-- **Numerical Focus**: Designed for numerical physics and engineering, not general symbolic algebra
 
 Be sure to use **SymPy** for comprehensive symbolic math (integration, series, limits, simplification, equation solving, etc.)
 
@@ -170,9 +169,36 @@ pip install .
 ```
 
 
-## Related Projects
+## Quick Example
 
-- **SymPy**: General-purpose symbolic mathematics (Python)
-- **NumPy**: Fast numeric arrays
-- **PyTorch**: GPU-accelerated tensors
-- **SciPy**: Scientific computing
+```python
+>>> from numiphy.symlib import *
+>>> from numiphy.lowlevelsupport import *
+>>> import torch
+>>> t, x, y = symbols('t, x, y')
+>>> F = x**2  + y**2 + Piecewise((t, t < 0), (x, True))
+>>> out = Symbol("out")
+
+>>> F.repr("math")
+'x**2 + y**2 + (t if (t < 0) else (x))'
+
+>>> F.repr("numpy")
+'x**2 + y**2 + numpy.where((t < 0), t, x)'
+
+>>> F.repr("torch", out=out)
+'torch.add(torch.add(torch.pow(x, 2, out=out), torch.pow(y, 2, out=out), out=out), torch.where(torch.lt(t, 0, out=out), t, x, out=out), out=out)'
+
+>>> F.lowlevel_repr("double")
+'(x*x) + (y*y) + (((t < 0.)) ? t : x)'
+
+>>> f = ScalarLowLevelCallable(F, x, y, t, scalar_type="double")
+>>> print(f.code("my_func"))
+double my_func(const double& x, const double& y, const double& t, const void*){
+    return (x*x) + (y*y) + (((t < 0.)) ? t : x);
+}
+
+>>> print(f.to_python_callable().code("my_func", "numpy"))
+def my_func(x, y, t)->float:
+	return x**2 + y**2 + numpy.where((t < 0), t, x)
+```
+
