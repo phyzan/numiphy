@@ -129,6 +129,39 @@ result = f_math(0.5, 1.0)
 - **`'math'`**: Python standard library - pure Python, no dependencies
 - **`ScalarLowLevelCallable.compile()`**: C++ function pointer - pass to scientific libraries and ctypes
 
+## Library Structure
+
+```
+numiphy/
+├── symlib/                  # Symbolic computation core
+│   ├── symcore.py           # Expression trees, atoms, derivatives, integrals
+│   ├── mathfuncs.py         # Math functions (sin, cos, exp, log, etc.)
+│   ├── boolean.py           # Boolean expression system (And, Or, Not)
+│   ├── geom.py              # Geometric object abstractions for PDEs
+│   ├── hashing.py           # Hashing utilities for comparable objects
+│   └── pylambda.py          # Callable wrappers for symbolic expressions
+│
+├── findiffs/                # Grid & finite differences
+│   ├── grids.py             # 1D and N-dimensional grid representations
+│   └── finitedifferences.py # Finite difference operators and weights
+│
+├── pdes/                    # PDE solvers
+│   ├── bounds.py            # Boundary conditions (Dirichlet, Neumann, Robin)
+│   ├── bvps.py              # Boundary value problem solvers
+│   ├── ivps.py              # Initial value problem / time evolution
+│   ├── linalg.py            # Eigenvalue problems and linear algebra
+│   ├── cached.py            # Operator caching system
+│   └── qm.py                # 1D quantum mechanics (Schrödinger equation)
+│
+├── toolkit/                 # Utilities and visualization
+│   ├── tools.py             # General utilities, sparse matrices, I/O
+│   ├── plotting.py          # Matplotlib visualization and animation
+│   └── compile_tools.py     # C++ compilation with pybind11
+│
+└── lowlevelsupport/         # C++ integration
+    └── lowlevelcallables.py # Symbolic to C++ code generation
+```
+
 ## Installation
 
 In the root folder, run
