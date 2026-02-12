@@ -8,8 +8,7 @@ import pybind11
 import time
 from typing import Iterable
 
-def compile(cpp_path, so_dir, module_name,
-            no_math_errno=True, no_math_trap=True, fast_math=False, links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str] = ()):
+def compile(cpp_path, so_dir, module_name, links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str] = ()):
     ## links[i] = (directory, name), so that -Ldirectory and -lname can be added to the compile command
     if not os.path.exists(cpp_path):
         raise RuntimeError(f"CPP file path does not exist: {cpp_path}")
@@ -21,13 +20,7 @@ def compile(cpp_path, so_dir, module_name,
     extension_suffix = sysconfig.get_config_var("EXT_SUFFIX")
     output_file = os.path.join(so_dir, module_name + extension_suffix)
 
-    flags = ['-O3', '-Wall', '-std=c++20', '-fopenmp', '-fPIC']
-    if no_math_errno:
-        flags.append('-fno-math-errno')
-    if no_math_trap:
-        flags.append('-fno-trapping-math')
-    if fast_math:
-        flags.append('-ffast-math')
+    flags = ['-std=c++20', '-fopenmp', '-fPIC']
 
     compile_cmd = [
         "g++",
