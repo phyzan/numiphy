@@ -187,7 +187,6 @@ pip install .
 >>> import torch
 >>> t, x, y = symbols('t, x, y')
 >>> F = x**2  + y**2 + Piecewise((t, t < 0), (x, True))
->>> out = Symbol("out")
 
 >>> F.repr("math")
 'x**2 + y**2 + (t if (t < 0) else (x))'
@@ -195,8 +194,8 @@ pip install .
 >>> F.repr("numpy")
 'x**2 + y**2 + numpy.where((t < 0), t, x)'
 
->>> F.repr("torch", out=out)
-'torch.add(torch.add(torch.pow(x, 2, out=out), torch.pow(y, 2, out=out), out=out), torch.where(torch.lt(t, 0, out=out), t, x, out=out), out=out)'
+>>> F.repr("torch")
+'x**2 + y**2 + torch.where((t < 0), t, x)'
 
 >>> F.lowlevel_repr("double")
 '(x*x) + (y*y) + (((t < 0.)) ? t : x)'

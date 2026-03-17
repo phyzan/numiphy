@@ -3,7 +3,7 @@ import numpy as np
 import math, cmath
 from .boolean import Boolean
 from typing import Iterable, Callable
-import torch
+
 
 class _CallableFunction:
 
@@ -112,22 +112,21 @@ class PythonCallable(_CallableFunction):
         return ', '.join(arglist)
     
     def code(self, name: str, lib: str, **kwargs):
-        if lib == 'torch':
-            extra_args = dict(out=None)
-        else:
-            extra_args = dict()
+        extra_args = dict()
         return self._code(name, self.return_id(), self.argument_list(**extra_args), self.core_impl(lib, **kwargs))
     
     def lambda_code(self, lib: str, **kwargs):
-        if lib == 'torch':
-            extra_args = dict(out=None)
-        else:
-            extra_args = dict()
+        extra_args = dict()
         return f'lambda {self.argument_list(**extra_args)}: {self.core_impl(lib, **kwargs)}'
     
     def lambdify(self, lib='numpy', **kwargs):
         code = self.code("MyFunc", lib=lib, **kwargs)
-        glob_vars = {"numpy": np, "math": math, "cmath": cmath, "torch": torch}
+        glob_vars = {"math": math, "cmath": cmath}
+        if lib == "numpy":
+            glob_vars["numpy"] = np
+        elif lib == "torch":
+            import torch
+            glob_vars["torch"] = torch
         exec(code, glob_vars)
         return glob_vars['MyFunc']
     
@@ -167,7 +166,7 @@ def _multidim_lambda_list(arg, lib: str):
     else:
         raise ValueError(f"Item of type '{arg.__class__}' not supported for lambdifying")
 
-def lambdify(arg, lib: str, *args: Symbol, out=False, **kwargs: Iterable[Symbol])->Callable:
+def lambdify(arg, lib: str, *args: Symbol, **kwargs: Iterable[Symbol])->Callable:
 
     if hasattr(arg, '__iter__'):
         r = TensorPythonCallable(arg, *args, **kwargs)
@@ -176,7 +175,7 @@ def lambdify(arg, lib: str, *args: Symbol, out=False, **kwargs: Iterable[Symbol]
     else:
         r = ScalarPythonCallable(arg, *args, **kwargs)
 
-    return r.lambdify(lib=lib, out=out)
+    return r.lambdify(lib=lib)
 
 
 class ScalarLambdaExpr:

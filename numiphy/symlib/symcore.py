@@ -606,12 +606,6 @@ class Operation(Expr):
         raise NotImplementedError('')
     
     def repr(self, lib = "", **kwargs)->str:
-        if lib == 'torch' and kwargs.get('out', None) is not None:
-            if len(self.args) == 2 and not (self._args[0].isNumber and self._args[1].isNumber):
-                return f'torch.{self.torch_binary}({self._args[0].repr(lib, **kwargs)}, {self._args[1].repr(lib, **kwargs)}, out=out)'
-            elif len(self.args) > 2:
-                return self.__class__(self.__class__(*self.args[:2], simplify=False), *self.args[2:], simplify=False).repr(lib, **kwargs)
-
         return self.binary.join([f._repr_from(lib, self.__class__) for f in self._args])
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -718,8 +712,6 @@ class Add(Operation):
         return res
     
     def repr(self, lib = "", **kwargs)->str:
-        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', None) is not None:
-            return super().repr(lib, **kwargs)
         return self._remove_minus("repr", lib)
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -922,8 +914,6 @@ class Mul(Operation):
         return s
 
     def repr(self, lib="", **kwargs):
-        if lib == 'torch' and ((not (self._args[0].isNumber and self._args[1].isNumber)) or len(self._args) > 2) and kwargs.get('out', None) is not None:
-            return super().repr(lib, **kwargs)
         return self._remove_one("repr", lib)
     
     def lowlevel_repr(self, scalar_type="double"):
@@ -987,9 +977,7 @@ class Pow(Operation):
             return a, b
     
     def repr(self, lib = "", **kwargs):
-        if lib == 'torch' and not self.isNumber and kwargs.get('out', None) is not None:
-            return super().repr(lib, **kwargs)
-        elif self.base.repr_priority == self.repr_priority:
+        if self.base.repr_priority == self.repr_priority:
             return f'({self.base._repr_from(lib, Pow)})**{self.power._repr_from(lib, Pow)}'
         else:
             return super().repr(lib, **kwargs)
@@ -1972,7 +1960,7 @@ class Piecewise(Expr):
         elif lib == 'numpy':
             return f'numpy.where({self.booleans[0].repr(lib, **kwargs)}, {self.expressions[0].repr(lib, **kwargs)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)})'
         elif lib == 'torch':
-            return f'torch.where({self.booleans[0].repr(lib, **kwargs)}, {self.expressions[0].repr(lib, **kwargs)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)}, out={'None' if self.isNumber else 'out'})'
+            return f'torch.where({self.booleans[0].repr(lib, **kwargs)}, {self.expressions[0].repr(lib, **kwargs)}, {self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)})'
         else:
             return f'({self.expressions[0].repr(lib, **kwargs)} if {self.booleans[0].repr(lib, **kwargs)} else ({self.init(*self.expressions[1:], *self.booleans[1:]).repr(lib, **kwargs)}))'
 

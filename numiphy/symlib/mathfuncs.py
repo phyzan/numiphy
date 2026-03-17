@@ -27,11 +27,6 @@ class Mathfunc(Expr):
     def repr(self, lib="", **kwargs):
         if lib == '':
             return f'{self.__class__.__name__}({self.Arg.repr(lib, **kwargs)})'
-        elif lib == 'torch':
-            if self.isNumber:
-                lib = "math"
-            else:
-                return f'torch.{self.name}({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
         base = f"{self.name}({self.Arg.repr(lib, **kwargs)})"
         if lib == 'math' and self.contains_type(Complex):
             return 'cmath.'+base
@@ -212,11 +207,6 @@ class Abs(Mathfunc):
         return Derivative(self, var)
 
     def repr(self, lib="", **kwargs):
-        if lib == 'torch':
-            if self.isNumber:
-                lib = "math"
-            else:
-                return f'torch.abs({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
         return f'abs({self.Arg.repr(lib, **kwargs)})'
 
     @classmethod
@@ -245,11 +235,6 @@ class Real(Mathfunc):
     def repr(self, lib="", **kwargs):
         if lib != '':
             return f'({self.Arg.repr(lib, **kwargs)}).real'
-        elif lib == 'torch':
-            if self.isNumber:
-                lib = "math"
-            else:
-                return f'torch.real({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
         else:
             return f'{self.__class__.__name__}({self.Arg.repr(lib, **kwargs)})'
         
@@ -282,11 +267,6 @@ class Imag(Mathfunc):
     def repr(self, lib="", **kwargs):
         if lib != '':
             return f'({self.Arg.repr(lib, **kwargs)}).imag'
-        elif lib == 'torch':
-            if self.isNumber:
-                lib = "math"
-            else:
-                return f'torch.imag({self.Arg.repr(lib, **kwargs)}, out={kwargs.get("out", "None")})'
         else:
             return f'{self.__class__.__name__}({self.Arg.repr(lib, **kwargs)})'
         
