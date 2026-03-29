@@ -203,8 +203,8 @@ class Abs(Mathfunc):
     npfunc = np.abs
     _priority = 31
 
-    def _diff(self, var):
-        return Derivative(self, var)
+    def _diff_unchained(self)->Expr:
+        return self.Arg/self
 
     def repr(self, lib="", **kwargs):
         return f'abs({self.Arg.repr(lib, **kwargs)})'

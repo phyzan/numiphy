@@ -960,6 +960,10 @@ class Pow(Operation):
         if a == 1 or b == 0:
             return S.One,
         elif b == 1:
+            #if apower is an even number, return abs(a)
+            if isinstance(apower, Integer):
+                if apower.value % 2 == 0:
+                    return Abs(a),
             return a,
         elif a == 0:
             if isinstance(b, (Float, Integer)):
@@ -973,8 +977,10 @@ class Pow(Operation):
                 return Rational(a.d**-b.value, a.n**-b.value),
         elif hasattr(a, 'raiseto'):
             return getattr(a, 'raiseto')(b),
-        else:
-            return a, b
+        elif isinstance(apower, Integer):
+            if apower.value % 2 == 0:
+                return Abs(a), b
+        return a, b
     
     def repr(self, lib = "", **kwargs):
         if self.base.repr_priority == self.repr_priority:
