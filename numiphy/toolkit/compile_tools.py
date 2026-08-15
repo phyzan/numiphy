@@ -8,8 +8,9 @@ import pybind11
 import time
 from typing import Iterable
 
-def compile(cpp_path, so_dir, module_name, links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str] = ()):
+def compile(cpp_path, so_dir, module_name, links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str] = (), includes: Iterable[str] = ()):
     ## links[i] = (directory, name), so that -Ldirectory and -lname can be added to the compile command
+    ## includes: extra -I directories, e.g. a package's own vendored/installed headers
     if not os.path.exists(cpp_path):
         raise RuntimeError(f"CPP file path does not exist: {cpp_path}")
     if not os.path.exists(so_dir):
@@ -22,12 +23,14 @@ def compile(cpp_path, so_dir, module_name, links: Iterable[tuple[str, str]] = ()
 
     flags = ['-std=c++20', '-fopenmp', '-fPIC']
 
+    extra_includes = [pybind11_include, *includes]
+
     compile_cmd = [
         "g++",
         *flags,
         "-shared",
         f"-I{python_include}",
-        f"-I{pybind11_include}",
+        *[f"-I{inc}" for inc in extra_includes],
         *[f"-{flag}" for flag in extra_flags],
         cpp_path,
         "-o", output_file,

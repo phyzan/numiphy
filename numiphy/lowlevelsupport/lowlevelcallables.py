@@ -186,7 +186,7 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, e
     code = "\n\n".join(items)
     return code
 
-def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str]=())->tuple[tuple[Pointer,...], ...]:
+def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str]=(), includes: Iterable[str]=())->tuple[tuple[Pointer,...], ...]:
     '''
     Converts a list of expressions into C++ syntax, and compiles them as separate functions
 
@@ -214,12 +214,12 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
         with tempfile.TemporaryDirectory() as so_dir:
             with tempfile.TemporaryDirectory() as temp_dir:
                 cpp_file = generate_cpp_file(code, temp_dir, module_name)
-                tools.compile(cpp_file, so_dir, module_name, links=links, extra_flags=extra_flags)
+                tools.compile(cpp_file, so_dir, module_name, links=links, extra_flags=extra_flags, includes=includes)
             temp_module = tools.import_lowlevel_module(so_dir, module_name)
     else:
         so_dir = directory if directory is not None else os.getcwd()
         with tempfile.TemporaryDirectory() as temp_dir:
             cpp_file = generate_cpp_file(code, temp_dir, module_name)
-            tools.compile(cpp_file, so_dir, module_name, links=links, extra_flags=extra_flags)
+            tools.compile(cpp_file, so_dir, module_name, links=links, extra_flags=extra_flags, includes=includes)
         temp_module = tools.import_lowlevel_module(so_dir, module_name)
     return temp_module.pointers(), *[getattr(temp_module, func_name) for func_name, _ in extra_funcs]
