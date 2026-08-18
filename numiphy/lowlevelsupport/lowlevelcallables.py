@@ -162,12 +162,13 @@ def generate_cpp_file(code, directory, module_name):
     
     return os.path.join(directory, f'{module_name}.cpp')
 
-def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]]=())->str:
+def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]]=(), include_commands: Iterable[str]=())->str:
 
     has_mpreal = any([f._scalar_type == "mpreal" for f in functions])
     mpreal_include = '#include <mpreal.h>\n\n' if has_mpreal else ''
     mpreal_use = 'using mpfr::mpreal;\n\n' if has_mpreal else ''
-    header = "#include <pybind11/pybind11.h>\n\n" + mpreal_include + extra_header_block + "\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\n" + mpreal_use
+    extra_includes = ''.join([f'#include {inc}\n' for inc in include_commands])
+    header = "#include <pybind11/pybind11.h>\n\n" + mpreal_include + extra_includes + extra_header_block + "\n#include <complex>\n\nusing std::complex, std::imag, std::real, std::numbers::pi;\n\nnamespace py = pybind11;\n\n" + mpreal_use
 
     names = [f"func{i}" for i in range(len(functions))]
 
@@ -186,7 +187,7 @@ def generate_cpp_code(functions: Iterable[LowLevelCallable], module_name: str, e
     code = "\n\n".join(items)
     return code
 
-def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str]=(), includes: Iterable[str]=())->tuple[tuple[Pointer,...], ...]:
+def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, module_name: str = None, extra_header_block: str = "", extra_code_block: str = "", extra_funcs: Iterable[tuple[str, str]] = (), links: Iterable[tuple[str, str]] = (), extra_flags: Iterable[str]=(), includes: Iterable[str]=(), include_commands: Iterable[str]=())->tuple[tuple[Pointer,...], ...]:
     '''
     Converts a list of expressions into C++ syntax, and compiles them as separate functions
 
@@ -209,7 +210,7 @@ def compile_funcs(functions: Iterable[LowLevelCallable], directory: str = None, 
     none_modname = module_name is None
     if (none_modname):
         module_name = tools.random_module_name()
-    code = generate_cpp_code(functions, module_name, extra_header_block=extra_header_block, extra_code_block=extra_code_block, extra_funcs=extra_funcs)
+    code = generate_cpp_code(functions, module_name, extra_header_block=extra_header_block, extra_code_block=extra_code_block, extra_funcs=extra_funcs, include_commands=include_commands)
     if none_modname:
         with tempfile.TemporaryDirectory() as so_dir:
             with tempfile.TemporaryDirectory() as temp_dir:
