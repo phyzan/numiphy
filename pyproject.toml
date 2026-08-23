@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "numiphy"
 version = "1.0"
 readme = "README.md"
-requires-python = ">=3.8"
+# 3.10 is a hard floor: typing.TypeAlias (lowlevelsupport/lowlevelcallables.py) is 3.10+,
+# and symlib/pylambda.py evaluates PEP 604 `X | Y` annotations at import time - it is the one
+# symlib module without `from __future__ import annotations`. Nothing here needs 3.11+.
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
