@@ -659,13 +659,13 @@ class InterpedArray:
 
 def UniformGrid(shape: tuple[int], limits: tuple[list[float]], periodic: tuple[bool]=None):
     if periodic is None:
-        periodic = len(x)*[False]
+        periodic = len(shape)*[False]
     grids = [Uniform1D(*limits[i], shape[i], periodic[i]) for i in range(len(shape))]
     return NdGrid(*grids)
 
 def LogarithmicGrid(shape: tuple[int], limits: tuple[list[float]], periodic: tuple[bool]=None):
     if periodic is None:
-        periodic = len(x)*[False]
+        periodic = len(shape)*[False]
     grids = [Logarithmic1D(*limits[i], shape[i], periodic[i]) for i in range(len(shape))]
     return NdGrid(*grids)
 
