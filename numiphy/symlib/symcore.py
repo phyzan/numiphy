@@ -1507,7 +1507,7 @@ class Derivative(Expr):
         if lib != '':
             raise NotImplementedError('.repr() not supported by external libraries for unevaluated derivatives')
         else:
-            return f"Derivative({", ".join(self.args)})"
+            return f"Derivative({', '.join(self.args)})"
 
     def get_ndarray(self, x, **kwargs):
         acc = kwargs.get('acc', 1)
